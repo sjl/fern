@@ -6,7 +6,7 @@
 
                :compose
                :curry
-               :ensure-gethash
+               :ensure-list
                :once-only
                :rcurry
                :symb

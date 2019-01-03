@@ -2,7 +2,7 @@
 ;;;; See http://quickutil.org for details.
 
 ;;;; To regenerate:
-;;;; (qtlc:save-utils-as "quickutils.lisp" :utilities '(:COMPOSE :CURRY :ENSURE-GETHASH :ONCE-ONLY :RCURRY :SYMB :WITH-GENSYMS) :ensure-package T :package "FERN.QUICKUTILS")
+;;;; (qtlc:save-utils-as "quickutils.lisp" :utilities '(:COMPOSE :CURRY :ENSURE-LIST :ONCE-ONLY :RCURRY :SYMB :WITH-GENSYMS) :ensure-package T :package "FERN.QUICKUTILS")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (unless (find-package "FERN.QUICKUTILS")
@@ -13,7 +13,9 @@
 (in-package "FERN.QUICKUTILS")
 
 (when (boundp '*utilities*)
-  (setf *utilities* (union *utilities* '(:MAKE-GENSYM-LIST :ENSURE-FUNCTION :COMPOSE :CURRY :ENSURE-GETHASH :ONCE-ONLY :RCURRY :MKSTR :SYMB :STRING-DESIGNATOR :WITH-GENSYMS))))
+  (setf *utilities* (union *utilities* '(:MAKE-GENSYM-LIST :ENSURE-FUNCTION :COMPOSE :CURRY
+                                         :ENSURE-LIST :ONCE-ONLY :RCURRY :MKSTR :SYMB
+                                         :STRING-DESIGNATOR :WITH-GENSYMS))))
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun make-gensym-list (length &optional (x "G"))
     "Returns a list of `length` gensyms, each generated as if with a call to `make-gensym`,
@@ -87,14 +89,11 @@ it is called with to `function`."
            (apply ,fun ,@curries more)))))
   
 
-  (defmacro ensure-gethash (key hash-table &optional default)
-    "Like `gethash`, but if `key` is not found in the `hash-table` saves the `default`
-under key before returning it. Secondary return value is true if key was
-already in the table."
-    `(multiple-value-bind (value ok) (gethash ,key ,hash-table)
-       (if ok
-           (values value ok)
-           (values (setf (gethash ,key ,hash-table) ,default) nil))))
+  (defun ensure-list (list)
+    "If `list` is a list, it is returned. Otherwise returns the list designated by `list`."
+    (if (listp list)
+        list
+        (list list)))
   
 
   (defmacro once-only (specs &body forms)
@@ -207,6 +206,6 @@ unique symbol the named variable will be bound to."
     `(with-gensyms ,names ,@forms))
   
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (export '(compose curry ensure-gethash once-only rcurry symb with-gensyms with-unique-names)))
+  (export '(compose curry ensure-list once-only rcurry symb with-gensyms with-unique-names)))
 
 ;;;; END OF quickutils.lisp ;;;;

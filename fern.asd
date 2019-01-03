@@ -23,5 +23,9 @@
                (:file "package")
                (:module "src" :serial t
                 :components ((:file "utils")
-                             (:file "main")))))
-
+                             (:file "main")
+                             (:module "files" :serial nil
+                              :components ((:file "ines")))
+                             (:module "cartridges" :serial nil
+                              :components ((:file "empty")
+                                           (:file "000")))))))
