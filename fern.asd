@@ -23,7 +23,11 @@
                (:file "package")
                (:module "src" :serial t
                 :components ((:file "utils")
-                             (:file "main")
+                             (:file "base")
+                             (:file "addressing-modes")
+                             (:file "opcodes")
+                             (:file "disassemble")
+                             (:file "run")
                              (:module "files" :serial nil
                               :components ((:file "ines")))
                              (:module "cartridges" :serial nil

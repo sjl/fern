@@ -39,9 +39,9 @@
                           :horizontal)))
            (battery-backed (logbitp 1 rom-control-1))
            (has-trainer (logbitp 2 rom-control-1))
-           (mapper (cat-bytes 4
-                              (bits rom-control-1 4 7)
-                              (bits rom-control-2 4 7)))
+           (mapper (cat (bits rom-control-1 4 7)
+                        (bits rom-control-2 4 7)
+                        4))
            (reserved-bits (bits rom-control-2 0 3))
            (trainer nil))
       (assert (every #'zerop reserved) ()

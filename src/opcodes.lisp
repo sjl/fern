@@ -1,293 +1,86 @@
 (in-package :fern)
 
-;;;; Utils --------------------------------------------------------------------
-(deftype memory (size)
-  `(simple-array u8 (,size)))
+;;;; Metadata -----------------------------------------------------------------
+(defclass* op ()
+  ((name :type symbol)
+   (opcode :type (integer 0 255))
+   (addressing-mode :type symbol)
+   (documentation :type string)
+   (legal :type boolean)
+   (cycles :type (integer 1 10))))
 
-(defun make-memory (size)
-  (make-array size :initial-element 0 :element-type 'u8))
+(defun op-width (op)
+  "Return the total width of the opcode and operand, in bytes."
+  (1+ (get (op-addressing-mode op) 'operand-width)))
 
-(defun unimplemented (&rest args)
-  (declare (ignore args))
-  (error "Unimplemented cartridge reader/writer."))
-
-
-;;;; Cartridges (aka Mappers) -------------------------------------------------
-(defgeneric make-cartridge (id prg chr ram))
-
-(defstruct (cartridge (:constructor nil))
-  (id (required 'id) :type (or null (integer 0 256)))
-  (reader #'unimplemented :type function-designator)
-  (writer #'unimplemented :type function-designator)
-  (prg)
-  (chr)
-  (wram))
+(defun has-operand-p (op)
+  "Return whether `op` has an operand at all."
+  (not (null (get (op-addressing-mode op) 'operand))))
 
 
-;;;; NES ----------------------------------------------------------------------
-(defstruct (nes (:conc-name nil))
-  (running t :type boolean)
-  (a 0 :type u8)
-  (x 0 :type u8)
-  (y 0 :type u8)
-  (status 0 :type u8)
-  (pc 0 :type u16)
-  (sp #xFF :type u8)
-  (ram (make-memory #x0800) :type (memory #x0800))
-  (cartridge (make-cartridge nil nil nil nil) :type cartridge)
-  (cycles 0 :type fixnum))
+(define-with-macro op
+  name opcode addressing-mode documentation legal cycles width)
 
-(defmacro define-flag (bit name)
-  `(progn
-     (defun ,name (nes)
-       (logbitp ,bit (status nes)))
-     (defun ,(symb name '-bit) (nes)
-       (ldbit ,bit (status nes)))
-     (defun (setf ,name) (new-value nes)
-       (setf (ldb (byte 1 ,bit) (status nes))
-             (if new-value 1 0))
-       new-value)
-     (defun (setf ,(symb name '-bit)) (new-value nes)
-       (setf (ldb (byte 1 ,bit) (status nes))
-             new-value))))
-
-(define-flag 0 carry)
-(define-flag 1 zero)
-(define-flag 2 interrupt-disable)
-(define-flag 3 decimal-mode)
-(define-flag 4 break-command)
-(define-flag 6 overflow)
-(define-flag 7 negative)
+(defmethod print-object ((op op) s)
+  (print-unreadable-object (op s :type t)
+    (with-op (op)
+      (if (not legal)
+        (format s "~2,'0X ~D" opcode documentation)
+        (format s "~2,'0X ~A/~A: ~A" opcode name addressing-mode documentation)))))
 
 
-(define-with-macro (nes :conc-name nil)
-  running
-  a x y status
-  pc sp
-  ram
-  cartridge
-  cycles
-  carry zero interrupt-disable decimal-mode break-command overflow negative
-  carry-bit zero-bit interrupt-disable-bit decimal-mode-bit break-command-bit overflow-bit negative-bit)
-
-
-(defun internal-read (nes address)
-  (if (< address #x2000)
-    (aref (ram nes) (mod address #x800))
-    (TODO)))
-
-(defun internal-write (nes address value)
-  (if (< address #x2000)
-    (setf (aref (ram nes) (mod address #x800)) value)
-    (TODO))
-  nil)
-
-
-(defun cartridge-read (nes address)
-  (funcall (cartridge-reader (cartridge nes)) address))
-
-(defun cartridge-write (nes address value)
-  (funcall (cartridge-writer (cartridge nes)) address value)
-  nil)
-
-
-(defun mref (nes address)
-  (if (< address #x4020)
-    (internal-read nes address)
-    (cartridge-read nes address)))
-
-(defun (setf mref) (new-value nes address)
-  (if (< address #x4020)
-    (internal-write nes address new-value)
-    (cartridge-write nes address new-value))
-  new-value)
-
-
-(defun mref/16 (nes address)
-  (cat (mref nes address)
-       (mref nes (1+/16 address))))
-
-
-(defun-inline stack-address (nes)
-  (logior #x0100 (sp nes)))
-
-(defun stack-push (nes value)
-  (setf (mref nes (stack-address nes)) value)
-  (decf/8 (sp nes)))
-
-(defun stack-push/16 (nes value)
-  (stack-push nes (msb value))
-  (stack-push nes (lsb value)))
-
-(defun stack-peek (nes)
-  (mref nes (stack-address nes)))
-
-(defun stack-peek/16 (nes)
-  (mref/16 nes (stack-address nes)))
-
-(defun stack-pop (nes)
-  (prog1 (stack-peek nes)
-    (incf/8 (sp nes))))
-
-(defun stack-pop/16 (nes)
-  (prog1 (stack-peek/16 nes)
-    (incf/8 (sp nes) 2)))
-
-
-;;;; Addressing Modes ---------------------------------------------------------
-(defun-inline read-operand (nes width)
-  (with-nes (nes)
-    (ecase width
-      (8 (prog1 (mref nes pc)
-           (incf pc)))
-      (16 (prog1 (cat (mref nes pc)
-                      (mref nes (1+/16 pc)))
-            (incf pc 2))))))
-
-(defgeneric addressing-mode-operand (mode))
-(defgeneric addressing-mode-address (mode))
-(defgeneric addressing-mode-read (mode))
-(defgeneric addressing-mode-write (mode))
-
-
-(defmacro define-addressing-mode (mode &key
-                                  operand-width
-                                  address
-                                  (read '(mref nes address))
-                                  (write '(mref nes address)))
-  `(progn
-     (defmethod addressing-mode-operand ((mode (eql ',mode)))
-       ',(if (null operand-width)
-           nil
-           `(read-operand nes ,operand-width)))
-     (defmethod addressing-mode-address ((mode (eql ',mode))) ',address)
-     (defmethod addressing-mode-read ((mode (eql ',mode))) ',read)
-     (defmethod addressing-mode-write ((mode (eql ',mode))) ',write)
-     ',mode))
-
-(define-addressing-mode implied
-  :operand-width nil
-  :address nil
-  :read nil
-  :write nil)
-
-(define-addressing-mode accumulator
-  :operand-width nil
-  :address nil
-  :read a
-  :write a)
-
-(define-addressing-mode immediate
-  :operand-width 8
-  :address nil
-  :read operand
-  :write nil)
-
-(define-addressing-mode zero-page
-  :operand-width 8
-  :address operand)
-
-(define-addressing-mode zero-page-x
-  :operand-width 8
-  :address (+/8 operand x))
-
-(define-addressing-mode zero-page-y
-  :operand-width 8
-  :address (+/8 operand y))
-
-(define-addressing-mode relative
-  :operand-width 8
-  :address (+/16 pc (signed operand 8))
-  :read nil
-  :write nil)
-
-(define-addressing-mode absolute
-  :operand-width 16
-  :address operand)
-
-(define-addressing-mode absolute-x
-  :operand-width 16
-  :address (+/16 operand x))
-
-(define-addressing-mode absolute-y
-  :operand-width 16
-  :address (+/16 operand y))
-
-(define-addressing-mode indirect
-  :operand-width 16
-  :address (if (= #xFF (lsb operand)) ;; handle this notorious 6502 bug
-             (cat (mref nes operand)
-                  (mref nes (logand operand #xFF00)))
-             (mref/16 nes operand))
-  :read nil
-  :write nil)
-
-(define-addressing-mode pre-indexed
-  :operand-width 8
-  :address (mref/16 nes (+/8 operand x)))
-
-(define-addressing-mode post-indexed
-  :operand-width 8
-  :address (+/16 (mref/16 nes operand) y))
-
-
-(defmacro with-addressing-mode (mode &body body)
-  (let ((operand (addressing-mode-operand mode))
-        (address (addressing-mode-address mode))
-        (read (addressing-mode-read mode))
-        (write (addressing-mode-write mode)))
-    `(let* (,@(when operand `((operand ,operand)))
-            ,@(when address `((address ,address))))
-       (declare ,@(when operand '((ignorable operand)))
-                ,@(when address '((ignorable address))))
-       (flet (,@(when read
-                  `((value () ,read)))
-              ,@(when write
-                  `(((setf value) (new-value) (setf ,write new-value)))))
-         (declare ,@(when read '((ignorable (function value))))
-                  ,@(when write '((ignorable (function (setf value))))))
-         ,@body))))
-
-
-;;;; Opcodes ------------------------------------------------------------------
-(defun illegal-opcode (opcode)
+(defun illegal (opcode)
   (error "Illegal opcode: ~2,'0X" opcode))
 
+
+;;;; State --------------------------------------------------------------------
 (eval-dammit (defparameter *debug-opcodes* t))
 
 (defparameter *opcode-functions*
   (iterate (for opcode :from 0 :below 256)
-           (collect (curry #'illegal-opcode opcode) :result-type vector)))
+           (collect (curry #'illegal opcode) :result-type vector)))
 
 (defparameter *opcode-data*
   (iterate
     (for opcode :from 0 :below 256)
-    (collect `(:opcode ,opcode :doc "Illegal opcode" :legal nil :cycles nil)
+    (collect (make-instance 'op
+               :opcode opcode
+               :documentation "Illegal opcode"
+               :legal nil)
              :result-type vector)))
 
 
-(defmacro define-opcode% (opcode cycles name documentation &body body)
-  `(progn
-     (declaim (ftype (function (nes) null) ,name))
-     (defun ,name (nes)
-       ,documentation
-       (with-nes (nes)
-         ,@body
-         (incf cycles ,cycles))
-       nil)
-     (setf (aref *opcode-functions* ,opcode)
-           ,(if *debug-opcodes* `',name `#',name)
-           (aref *opcode-data* ,opcode)
-           `(:opcode ,,opcode :doc ,,documentation :legal t :cycles ,,cycles))
-     ',name))
+;;;; Macrology ----------------------------------------------------------------
+(defmacro define-opcode%
+    (opcode cycles name addressing-mode documentation &body body)
+  (let ((full-name (symb name '/ addressing-mode)))
+    `(progn
+       (declaim (ftype (function (nes) null) ,full-name))
+       (defun ,full-name (nes)
+         ,documentation
+         (with-nes (nes)
+           ,@body
+           (incf cycles ,cycles))
+         nil)
+       (setf (aref *opcode-functions* ,opcode)
+             ,(if *debug-opcodes* `',full-name `#',full-name)
+             (aref *opcode-data* ,opcode)
+             (make-instance 'op
+               :opcode ,opcode
+               :documentation ,documentation
+               :legal t
+               :cycles ,cycles
+               :name ',name
+               :addressing-mode ',addressing-mode))
+       ',full-name)))
 
 (defmacro define-opcode (name addressing-mode-map documentation &body body)
   `(progn
-     ,@(iterate (for (opcode addressing-mode cycles) :in addressing-mode-map)
-                (for full-name = (symb name '/ addressing-mode))
-                (collect
-                  `(define-opcode% ,opcode ,cycles ,full-name ,documentation
-                     (with-addressing-mode ,addressing-mode ,@body))))))
+     ,@(iterate
+         (for (opcode addressing-mode cycles) :in addressing-mode-map)
+         (collect
+           `(define-opcode% ,opcode ,cycles ,name ,addressing-mode ,documentation
+              (with-addressing-mode ,addressing-mode ,@body))))))
 
 
 (defmacro copy-and-set-flags (source destination &rest flags)
@@ -399,7 +192,13 @@
 (define-opcode php
     ((#x08 implied 3))
   "Push processor status onto the stack"
-  (stack-push nes status))
+  ;; http://wiki.nesdev.com/w/index.php/Status_flags
+  ;;
+  ;; > Two interrupts (/IRQ and /NMI) and two instructions (PHP and BRK) push the
+  ;; > flags to the stack. In the byte pushed, bit 5 is always set to 1, and bit
+  ;; > 4 is 1 if from an instruction (PHP or BRK) or 0 if from an interrupt line
+  ;; > being pulled low (/IRQ or /NMI).
+  (stack-push nes (dpb #b11 (byte 2 4) status)))
 
 (define-opcode pla
     ((#x68 implied 4))
@@ -733,7 +532,7 @@
   "Force an interrupt"
   (setf break-command t)
   (stack-push/16 nes pc)
-  (stack-push nes status)
+  (stack-push nes (dpb #b11 (byte 2 4) status)) ;; see comment in php
   (setf pc (mref/16 nes #xFFFE)))
 
 (define-opcode nop

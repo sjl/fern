@@ -14,14 +14,20 @@
 (defun-inline bits (integer start end)
   (ldb (byte (- (1+ end) start) start) integer))
 
-(defun-inline cat (low high)
-  "Concatenate two 8-bit bytes."
-  (logior low (ash high 8)))
+(defun-inline cat (low high &optional (width 8))
+  "Concatenate two `width`-bit bytes."
+  (logior low (ash high width)))
 
 (defun-inline signed (unsigned-value width)
   (if (logbitp (1- width) unsigned-value)
     (dpb unsigned-value (byte (1- width) 0) -1)
     unsigned-value))
+
+(defun-inline signed/8 (unsigned-value)
+  (signed unsigned-value 8))
+
+(defun-inline signed/16 (unsigned-value)
+  (signed unsigned-value 16))
 
 
 (defun msb (integer) (ldb (byte 8 8) integer))
@@ -49,6 +55,14 @@
   (dpb new-bit (byte 1 position) integer))
 
 
+;;;; Memory Arrays ------------------------------------------------------------
+(deftype memory (&optional (size '*))
+  `(simple-array u8 (,size)))
+
+(defun make-memory (size)
+  (make-array size :initial-element 0 :element-type 'u8))
+
+
 ;;;; Misc ---------------------------------------------------------------------
 (defun-inline todo ()
   (error "TODO"))
@@ -59,4 +73,7 @@
 (defun kb (n)
   (* 1024 n))
 
+(defun unimplemented (&rest args)
+  (declare (ignore args))
+  (error "Unimplemented"))
 

@@ -3,3 +3,5 @@ syntax: glob
 scratch.lisp
 lisp.prof
 digraph.png
+*.log
+*.log.bak
