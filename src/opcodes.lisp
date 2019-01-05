@@ -14,10 +14,6 @@
   "Return the total width of the opcode and operand, in bytes."
   (1+ (get (op-addressing-mode op) 'operand-width)))
 
-(defun has-operand-p (op)
-  "Return whether `op` has an operand at all."
-  (not (null (get (op-addressing-mode op) 'operand))))
-
 
 (define-with-macro op
   name opcode addressing-mode documentation known legal cycles width)
@@ -25,18 +21,18 @@
 (defmethod print-object ((op op) s)
   (print-unreadable-object (op s :type t)
     (with-op (op)
-      (if (not legal)
-        (format s "~2,'0X ~D" opcode documentation)
-        (format s "~2,'0X ~A/~A: ~A" opcode name addressing-mode documentation)))))
+      (format s "~2,'0X ~A~A/~A: ~A"
+              opcode
+              (if legal "" "*")
+              name addressing-mode documentation))))
 
 
+;;;; State --------------------------------------------------------------------
 (defun unknown-opcode (opcode)
   (lambda (nes)
     (declare (ignore nes))
     (ignore-errors (error "Unknown opcode: ~2,'0X" opcode))))
 
-
-;;;; State --------------------------------------------------------------------
 (eval-dammit (defparameter *debug-opcodes* t))
 
 (defparameter *opcode-functions*
@@ -59,6 +55,8 @@
 ;;;; Macrology ----------------------------------------------------------------
 (defmacro define-opcode%
     (opcode &key cycles name addressing-mode legal? documentation suffix)
+  ;; Define a function for the opcode and patch it into the two arrays.  The
+  ;; function will used the macro defined in `define-opcode` to expand its guts.
   (let* ((full-name (symb name '/ addressing-mode
                           (if suffix (format nil "/~D" suffix) "")))
          (macro-name (symb name '%)))
@@ -84,6 +82,69 @@
        ',full-name)))
 
 (defmacro define-opcode (name addressing-mode-map documentation &body body)
+  "Define an opcode.
+
+  `addressing-mode-map` is a list of entries, each of the form:
+
+    (opcode addressing-mode cycles &key illegal)
+
+  For each opcode, a function `NAME/ADDRESSING-MODE` will be defined and added
+  into `*opcode-functions*`.   This function will take a single parameter, named
+  `nes`.  An entry in `*opcode-data*` will also be created.
+
+  Illegal opcodes will have a `/N` suffix (where N is a number) appended to
+  their name, to handle opcodes with more than one opcode per addressing mode.
+  This is only the case for illegal opcodes.
+
+  `body` will be expanded in a context where:
+
+  * `nes` is bound to the currently-running NES.
+  * `(with-nes (nes) …)` has been used.
+  * `(with-addressing-mode addressing-mode …)` has been used.
+
+  This is a lot of magic, but it makes reading and writing the opcodes SO much
+  less tedious.
+
+  "
+  ;; Example:
+  ;;
+  ;;     (define-opcode foo
+  ;;         ((#x00 zero-page 2)
+  ;;          (#x01 absolute 3))
+  ;;       (setf (value) (1+ (value))))
+  ;;
+  ;; expands into something like:
+  ;;
+  ;;     (defmacro foo% ()
+  ;;       '(setf (value) (1+ (value))))
+  ;;
+  ;;     (defun foo/immediate (nes)
+  ;;       (with-nes
+  ;;         (with-addressing-mode zero-page
+  ;;           (foo%)
+  ;;           (incf cycles 2))))
+  ;;
+  ;;     (defun foo/absolute (nes)
+  ;;       (with-nes
+  ;;         (with-addressing-mode absolute
+  ;;           (foo%)
+  ;;           (incf cycles 3))))
+  ;;
+  ;; We create a macro for the guts of the opcode for easier reuse in the
+  ;; illegal opcodes.
+  ;;
+  ;; That last function continues to expand into something like:
+  ;;
+  ;;     (defun foo/absolute (nes)
+  ;;       (with-nes
+  ;;         (let ((operand (read-operand nes 16))
+  ;;               (address operand))
+  ;;           (flet ((value ()
+  ;;                    (mref nes address))
+  ;;                  ((setf value) (new-value)
+  ;;                   (setf (mref nes address) new-value)))
+  ;;             (setf (value) (1+ (value)))
+  ;;             (incf cycles 3)))))
   `(progn
      (defmacro ,(symb name '%) ()
        '(progn ,@body))
@@ -102,6 +163,12 @@
 
 
 (defmacro copy-and-set-flags (source destination &rest flags)
+  "Copy the value in `source` to `destination`, setting flags along the way.
+
+  The only flags supported are `negative` and `zero`.  If any are specified they
+  will be set based on the value copied.
+
+  "
   (with-gensyms (val)
     `(let ((,val ,source))
        (setf ,destination ,val
@@ -237,7 +304,7 @@
   "Pull processor status from the stack"
   ;; http://wiki.nesdev.com/w/index.php/Status_flags
   ;; > Two instructions (PLP and RTI) pull a byte from the stack and set all the
-  ;; > flags. They ignore bits 5 and 4. 
+  ;; > flags. They ignore bits 5 and 4.
   (set-flags nes (stack-pop nes)))
 
 

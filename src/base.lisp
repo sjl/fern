@@ -1,6 +1,5 @@
 (in-package :fern)
 
-(defparameter *current* nil)
 
 
 ;;;; Cartridges (aka Mappers) -------------------------------------------------
@@ -23,12 +22,22 @@
   (y 0 :type u8)
   (status 0 :type u8)
   (pc 0 :type u16)
-  (sp #xFF :type u8)
+  (sp 0 :type u8)
   (ram (make-memory #x0800) :type (memory #x0800))
   (cartridge (make-cartridge nil nil nil nil) :type cartridge)
   (cycles 0 :type fixnum))
 
 (defmacro define-flag (bit name)
+  "Define a flag called `name` for bit `bit` of the processor status register.
+
+   Defining a flag called `name` will define four functions:
+
+  * `(name)`: return the flag as a boolean (t = 1, nil = 0).
+  * `(name-bit)`: return the flag as a bit.
+  * `(setf name)`: set the flag as a boolean (t = 1, nil = 0).
+  * `(setf name-bit)`: set the flag to a bit.
+
+  "
   `(progn
      (defun ,name (nes)
        (logbitp ,bit (status nes)))
@@ -40,7 +49,8 @@
        new-value)
      (defun (setf ,(symb name '-bit)) (new-value nes)
        (setf (ldb (byte 1 ,bit) (status nes))
-             new-value))))
+             new-value))
+     ',name))
 
 (define-flag 0 carry)
 (define-flag 1 zero)
@@ -50,8 +60,8 @@
 (define-flag 6 overflow)
 (define-flag 7 negative)
 
-
 (define-with-macro (nes :conc-name nil)
+  ;; this magic thing saves a LOT of typing later
   running
   a x y status
   pc sp
@@ -62,15 +72,23 @@
   carry-bit zero-bit interrupt-disable-bit decimal-mode-bit break-command-bit overflow-bit negative-bit)
 
 
-(defun nmi-vector (nes) (mref/16 nes #xFFFA))
-(defun reset-vector (nes) (mref/16 nes #xFFFC))
-(defun irq-vector (nes) (mref/16 nes #xFFFE))
+;;;; Vectors ------------------------------------------------------------------
+;;; A "vector" in NES terminology is just a two-byte address near the end of
+;;; memory.  They're used to tell the NES where to go after resetting,
+;;; interrupting, etc.
 
+(defun nmi-vector (nes)   (mref/16 nes #xFFFA))
+(defun reset-vector (nes) (mref/16 nes #xFFFC))
+(defun irq-vector (nes)   (mref/16 nes #xFFFE))
+
+
+;;;; Reset --------------------------------------------------------------------
 (defun reset (nes)
+  "Reset `nes`."
   (setf *current* nes)
   (with-nes (nes)
     ;; https://wiki.nesdev.com/w/index.php/CPU_power_up_state
-    (setf status #x24 ; todo fix this to be #x34 once we're done with nestest
+    (setf status #x34
           a 0
           x 0
           y 0
@@ -87,8 +105,7 @@
 (defun internal-write (nes address value)
   (if (< address #x2000)
     (setf (aref (ram nes) (mod address #x800)) value)
-    #+no (TODO)
-    )
+    (TODO))
   nil)
 
 
