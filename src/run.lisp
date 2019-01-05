@@ -21,10 +21,12 @@
     (reset nes)
     (setf (pc nes) #xC000) ; fuckin nestest
     (iterate
-      (repeat 1000)
+      (repeat 8991)
       (log-state nes)
       (terpri)
       (run-one nes))))
 
-;; (with-open-file (*standard-output* "test/output.log" :direction :output :if-exists :supersede)
-;;   (run))
+
+
+(with-open-file (*standard-output* "test/output.log" :direction :output :if-exists :supersede)
+  (run))

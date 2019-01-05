@@ -2,6 +2,7 @@
 
 (defparameter *current* nil)
 
+
 ;;;; Cartridges (aka Mappers) -------------------------------------------------
 (defgeneric make-cartridge (id prg chr ram))
 
@@ -61,7 +62,6 @@
   carry-bit zero-bit interrupt-disable-bit decimal-mode-bit break-command-bit overflow-bit negative-bit)
 
 
-
 (defun nmi-vector (nes) (mref/16 nes #xFFFA))
 (defun reset-vector (nes) (mref/16 nes #xFFFC))
 (defun irq-vector (nes) (mref/16 nes #xFFFE))
@@ -87,7 +87,8 @@
 (defun internal-write (nes address value)
   (if (< address #x2000)
     (setf (aref (ram nes) (mod address #x800)) value)
-    (TODO))
+    #+no (TODO)
+    )
   nil)
 
 

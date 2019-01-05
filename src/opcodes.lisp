@@ -6,6 +6,7 @@
    (opcode :type (integer 0 255))
    (addressing-mode :type symbol)
    (documentation :type string)
+   (known :type boolean)
    (legal :type boolean)
    (cycles :type (integer 1 10))))
 
@@ -19,7 +20,7 @@
 
 
 (define-with-macro op
-  name opcode addressing-mode documentation legal cycles width)
+  name opcode addressing-mode documentation known legal cycles width)
 
 (defmethod print-object ((op op) s)
   (print-unreadable-object (op s :type t)
@@ -29,8 +30,10 @@
         (format s "~2,'0X ~A/~A: ~A" opcode name addressing-mode documentation)))))
 
 
-(defun illegal (opcode)
-  (error "Illegal opcode: ~2,'0X" opcode))
+(defun unknown-opcode (opcode)
+  (lambda (nes)
+    (declare (ignore nes))
+    (ignore-errors (error "Unknown opcode: ~2,'0X" opcode))))
 
 
 ;;;; State --------------------------------------------------------------------
@@ -38,37 +41,43 @@
 
 (defparameter *opcode-functions*
   (iterate (for opcode :from 0 :below 256)
-           (collect (curry #'illegal opcode) :result-type vector)))
+           (collect (unknown-opcode opcode) :result-type vector)))
 
 (defparameter *opcode-data*
   (iterate
     (for opcode :from 0 :below 256)
     (collect (make-instance 'op
                :opcode opcode
-               :documentation "Illegal opcode"
+               :documentation "Unknown opcode"
+               :name '???
+               :addressing-mode 'implied
+               :known nil
                :legal nil)
              :result-type vector)))
 
 
 ;;;; Macrology ----------------------------------------------------------------
 (defmacro define-opcode%
-    (opcode cycles name addressing-mode documentation &body body)
-  (let ((full-name (symb name '/ addressing-mode)))
+    (opcode &key cycles name addressing-mode legal? documentation suffix)
+  (let* ((full-name (symb name '/ addressing-mode
+                          (if suffix (format nil "/~D" suffix) "")))
+         (macro-name (symb name '%)))
     `(progn
        (declaim (ftype (function (nes) null) ,full-name))
        (defun ,full-name (nes)
          ,documentation
          (with-nes (nes)
-           ,@body
+           (with-addressing-mode ,addressing-mode (,macro-name))
            (incf cycles ,cycles))
          nil)
        (setf (aref *opcode-functions* ,opcode)
-             ,(if *debug-opcodes* `',full-name `#',full-name)
-             (aref *opcode-data* ,opcode)
+             ,(if *debug-opcodes* `',full-name `#',full-name))
+       (setf (aref *opcode-data* ,opcode)
              (make-instance 'op
                :opcode ,opcode
                :documentation ,documentation
-               :legal t
+               :known t
+               :legal ,legal?
                :cycles ,cycles
                :name ',name
                :addressing-mode ',addressing-mode))
@@ -76,11 +85,20 @@
 
 (defmacro define-opcode (name addressing-mode-map documentation &body body)
   `(progn
+     (defmacro ,(symb name '%) ()
+       '(progn ,@body))
      ,@(iterate
-         (for (opcode addressing-mode cycles) :in addressing-mode-map)
-         (collect
-           `(define-opcode% ,opcode ,cycles ,name ,addressing-mode ,documentation
-              (with-addressing-mode ,addressing-mode ,@body))))))
+         (with suffix = -1)
+         (for entry :in addressing-mode-map)
+         (destructuring-bind (opcode addressing-mode cycles &key illegal) entry
+           (collect
+             `(define-opcode% ,opcode
+                :cycles ,cycles
+                :name ,name
+                :addressing-mode ,addressing-mode
+                :documentation ,documentation
+                :legal? ,(not illegal)
+                :suffix ,(if illegal (incf suffix) nil)))))))
 
 
 (defmacro copy-and-set-flags (source destination &rest flags)
@@ -96,57 +114,57 @@
 
 ;;;; Load and Store -----------------------------------------------------------
 (define-opcode lda
-    ((#xA9 immediate 2)
-     (#xA5 zero-page 3)
-     (#xB5 zero-page-x 4)
-     (#xAD absolute 4)
-     (#xBD absolute-x 4)
-     (#xB9 absolute-y 4)
-     (#xA1 pre-indexed 6)
+    ((#xA9 immediate    2)
+     (#xA5 zero-page    3)
+     (#xB5 zero-page-x  4)
+     (#xAD absolute     4)
+     (#xBD absolute-x   4)
+     (#xB9 absolute-y   4)
+     (#xA1 pre-indexed  6)
      (#xB1 post-indexed 5))
   "Load accumulator"
   (copy-and-set-flags (value) a zero negative))
 
 (define-opcode ldx
-    ((#xA2 immediate 2)
-     (#xA6 zero-page 3)
+    ((#xA2 immediate   2)
+     (#xA6 zero-page   3)
      (#xB6 zero-page-y 4)
-     (#xAE absolute 4)
-     (#xBE absolute-y 4))
+     (#xAE absolute    4)
+     (#xBE absolute-y  4))
   "Load X register"
   (copy-and-set-flags (value) x zero negative))
 
 (define-opcode ldy
-    ((#xA0 immediate 2)
-     (#xA4 zero-page 3)
+    ((#xA0 immediate   2)
+     (#xA4 zero-page   3)
      (#xB4 zero-page-x 4)
-     (#xAC absolute 4)
-     (#xBC absolute-x 4))
+     (#xAC absolute    4)
+     (#xBC absolute-x  4))
   "Load Y register"
   (copy-and-set-flags (value) y zero negative))
 
 (define-opcode sta
-    ((#x85 zero-page 3)
-     (#x95 zero-page-x 4)
-     (#x8D absolute 4)
-     (#x9D absolute-x 5)
-     (#x99 absolute-y 5)
-     (#x81 pre-indexed 6)
+    ((#x85 zero-page    3)
+     (#x95 zero-page-x  4)
+     (#x8D absolute     4)
+     (#x9D absolute-x   5)
+     (#x99 absolute-y   5)
+     (#x81 pre-indexed  6)
      (#x91 post-indexed 6))
   "Store accumulator"
   (setf (value) a))
 
 (define-opcode stx
-    ((#x86 zero-page 3)
+    ((#x86 zero-page   3)
      (#x96 zero-page-y 4)
-     (#x8E absolute 4))
+     (#x8E absolute    4))
   "Store X register"
   (setf (value) x))
 
 (define-opcode sty
-    ((#x84 zero-page 3)
-     (#x94 zero-page-y 4)
-     (#x8C absolute 4))
+    ((#x84 zero-page   3)
+     (#x94 zero-page-x 4)
+     (#x8C absolute    4))
   "Store Y register"
   (setf (value) y))
 
@@ -174,6 +192,15 @@
 
 
 ;;;; Stack Operations ---------------------------------------------------------
+(defun set-flags (nes stored-flags)
+  ;; 76543210
+  ;; XX__XXXX
+  (setf (ldb (byte 4 0) (status nes))
+        (ldb (byte 4 0) stored-flags)
+        (ldb (byte 2 6) (status nes))
+        (ldb (byte 2 6) stored-flags)))
+
+
 (define-opcode tsx
     ((#xBA implied 2))
   "Transfer stack pointer to X"
@@ -208,97 +235,136 @@
 (define-opcode plp
     ((#x28 implied 4))
   "Pull processor status from the stack"
-  (setf status (stack-pop nes)))
+  ;; http://wiki.nesdev.com/w/index.php/Status_flags
+  ;; > Two instructions (PLP and RTI) pull a byte from the stack and set all the
+  ;; > flags. They ignore bits 5 and 4. 
+  (set-flags nes (stack-pop nes)))
 
 
 ;;;; Logical Operations -------------------------------------------------------
 (define-opcode and
-    ((#x29 immediate 2)
-     (#x25 zero-page 3)
-     (#x35 zero-page-x 4)
-     (#x2D absolute 4)
-     (#x3D absolute-x 4)
-     (#x39 absolute-y 4)
-     (#x21 pre-indexed 6)
+    ((#x29 immediate    2)
+     (#x25 zero-page    3)
+     (#x35 zero-page-x  4)
+     (#x2D absolute     4)
+     (#x3D absolute-x   4)
+     (#x39 absolute-y   4)
+     (#x21 pre-indexed  6)
      (#x31 post-indexed 5))
   "Logical AND"
   (copy-and-set-flags (logand a (value)) a zero negative))
 
 (define-opcode eor
-    ((#x49 immediate 2)
-     (#x45 zero-page 3)
-     (#x55 zero-page-x 4)
-     (#x4D absolute 4)
-     (#x5D absolute-x 4)
-     (#x59 absolute-y 4)
-     (#x41 pre-indexed 6)
+    ((#x49 immediate    2)
+     (#x45 zero-page    3)
+     (#x55 zero-page-x  4)
+     (#x4D absolute     4)
+     (#x5D absolute-x   4)
+     (#x59 absolute-y   4)
+     (#x41 pre-indexed  6)
      (#x51 post-indexed 5))
   "Logical XOR"
   (copy-and-set-flags (logxor a (value)) a zero negative))
 
 (define-opcode ora
-    ((#x09 immediate 2)
-     (#x05 zero-page 3)
-     (#x15 zero-page-x 4)
-     (#x0D absolute 4)
-     (#x1D absolute-x 4)
-     (#x19 absolute-y 4)
-     (#x01 pre-indexed 6)
+    ((#x09 immediate    2)
+     (#x05 zero-page    3)
+     (#x15 zero-page-x  4)
+     (#x0D absolute     4)
+     (#x1D absolute-x   4)
+     (#x19 absolute-y   4)
+     (#x01 pre-indexed  6)
      (#x11 post-indexed 5))
   "Logical IOR"
   (copy-and-set-flags (logior a (value)) a zero negative))
 
 (define-opcode bit
     ((#x24 zero-page 3)
-     (#x2C absolute 4))
+     (#x2C absolute  4))
   "Bit test"
-  (let ((result (logand a (value))))
-    (setf zero (zerop result)
-          overflow (logbitp 6 result)
-          negative (logbitp 7 result))))
+  (let ((val (value)))
+    (setf zero (zerop (logand a val))
+          overflow (logbitp 6 val)
+          negative (logbitp 7 val))))
 
 
 ;;;; Arithmetic Operations ----------------------------------------------------
+(defun sign-bit (byte)
+  (ldbit 7 byte))
+
+(defun overflow-add-p (a b result)
+  ;; http://forums.nesdev.com/viewtopic.php?p=44518#p44518
+  ;;
+  ;; For addition, overflow happens when:
+  ;;
+  ;;     Positive + Positive = Negative
+  ;;     Negative + Negative = Positive
+  (let ((sa (sign-bit a))
+        (sb (sign-bit b))
+        (sr (sign-bit result)))
+    (and (= sa sb)
+         (/= sa sr))))
+
+(defun overflow-sub-p (a b result)
+  ;; http://forums.nesdev.com/viewtopic.php?p=44518#p44518
+  ;;
+  ;; For subtraction, overflow happens when:
+  ;;
+  ;;     Positive - Negative = Negative
+  ;;     Negative - Positive = Positive
+  (let ((sa (sign-bit a))
+        (sb (sign-bit b))
+        (sr (sign-bit result)))
+    (and (/= sa sb)
+         (= sb sr))))
+
+
 (define-opcode adc
-    ((#x69 immediate 2)
-     (#x65 zero-page 3)
-     (#x75 zero-page-x 4)
-     (#x6D absolute 4)
-     (#x7D absolute-x 4)
-     (#x79 absolute-y 4)
-     (#x61 pre-indexed 6)
+    ((#x69 immediate    2)
+     (#x65 zero-page    3)
+     (#x75 zero-page-x  4)
+     (#x6D absolute     4)
+     (#x7D absolute-x   4)
+     (#x79 absolute-y   4)
+     (#x61 pre-indexed  6)
      (#x71 post-indexed 5))
   "Add with Carry"
-  (let* ((full (+ a (value) carry-bit))
+  (let* ((m (value))
+         (n a)
+         (full (+ m n carry-bit))
          (result (wrap full 8)))
     (copy-and-set-flags result a zero negative)
     (setf carry (> full #xFF)
-          overflow (TODO))))
+          overflow (overflow-add-p m n result))))
 
 (define-opcode sbc
-    ((#xE9 immediate 2)
-     (#xE5 zero-page 3)
-     (#xF5 zero-page-x 4)
-     (#xED absolute 4)
-     (#xFD absolute-x 4)
-     (#xF9 absolute-y 4)
-     (#xE1 pre-indexed 6)
-     (#xF1 post-indexed 5))
+    ((#xE9 immediate    2)
+     (#xE5 zero-page    3)
+     (#xF5 zero-page-x  4)
+     (#xED absolute     4)
+     (#xFD absolute-x   4)
+     (#xF9 absolute-y   4)
+     (#xE1 pre-indexed  6)
+     (#xF1 post-indexed 5)
+     (#xEB immediate 2 :illegal t))
   "Subtract with carry"
-  (let* ((full (- a (value) (if carry 0 1)))
+  (let* ((m a)
+         (n (value))
+         (full (- m n (if carry 0 1)))
          (result (wrap full 8)))
     (copy-and-set-flags result a zero negative)
-    (setf carry (minusp full)
-          overflow (TODO))))
+    (setf carry (>= full 0)
+          overflow (overflow-sub-p m n result))))
+
 
 (define-opcode cmp
-    ((#xC9 immediate 2)
-     (#xC5 zero-page 3)
-     (#xD5 zero-page-x 4)
-     (#xCD absolute 4)
-     (#xDD absolute-x 4)
-     (#xD9 absolute-y 4)
-     (#xC1 pre-indexed 6)
+    ((#xC9 immediate    2)
+     (#xC5 zero-page    3)
+     (#xD5 zero-page-x  4)
+     (#xCD absolute     4)
+     (#xDD absolute-x   4)
+     (#xD9 absolute-y   4)
+     (#xC1 pre-indexed  6)
      (#xD1 post-indexed 5))
   "Compare accumulator"
   (let ((result (- a (value))))
@@ -309,7 +375,7 @@
 (define-opcode cpx
     ((#xE0 immediate 2)
      (#xE4 zero-page 3)
-     (#xEC absolute 4))
+     (#xEC absolute  4))
   "Compare X register"
   (let ((result (- x (value))))
     (setf carry (>= result 0)
@@ -319,7 +385,7 @@
 (define-opcode cpy
     ((#xC0 immediate 2)
      (#xC4 zero-page 3)
-     (#xCC absolute 4))
+     (#xCC absolute  4))
   "Compare Y register"
   (let ((result (- y (value))))
     (setf carry (>= result 0)
@@ -329,10 +395,10 @@
 
 ;;;; Increment and Decrement --------------------------------------------------
 (define-opcode inc
-    ((#xE6 zero-page 5)
+    ((#xE6 zero-page   5)
      (#xF6 zero-page-x 6)
-     (#xEE absolute 6)
-     (#xFE absolute-x 7))
+     (#xEE absolute    6)
+     (#xFE absolute-x  7))
   "Increment"
   (copy-and-set-flags (1+/8 (value)) (value) zero negative))
 
@@ -347,10 +413,10 @@
   (copy-and-set-flags (1+/8 y) y zero negative))
 
 (define-opcode dec
-    ((#xC6 zero-page 5)
+    ((#xC6 zero-page   5)
      (#xD6 zero-page-x 6)
-     (#xCE absolute 6)
-     (#xDE absolute-x 7))
+     (#xCE absolute    6)
+     (#xDE absolute-x  7))
   "Decrement"
   (copy-and-set-flags (1-/8 (value)) (value) zero negative))
 
@@ -368,10 +434,10 @@
 ;;;; Shift Operations ---------------------------------------------------------
 (define-opcode asl
     ((#x0A accumulator 2)
-     (#x06 zero-page 5)
+     (#x06 zero-page   5)
      (#x16 zero-page-x 6)
-     (#x0E absolute 6)
-     (#x1E absolute-x 7))
+     (#x0E absolute    6)
+     (#x1E absolute-x  7))
   "Arithmetic shift left"
   (let* ((full (ash (value) 1))
          (result (wrap full 8)))
@@ -380,10 +446,10 @@
 
 (define-opcode lsr
     ((#x4A accumulator 2)
-     (#x46 zero-page 5)
+     (#x46 zero-page   5)
      (#x56 zero-page-x 6)
-     (#x4E absolute 6)
-     (#x5E absolute-x 7))
+     (#x4E absolute    6)
+     (#x5E absolute-x  7))
   "Logical shift right"
   (let* ((val (value))
          (result (ash val -1)))
@@ -392,10 +458,10 @@
 
 (define-opcode rol
     ((#x2A accumulator 2)
-     (#x26 zero-page 5)
+     (#x26 zero-page   5)
      (#x36 zero-page-x 6)
-     (#x2E absolute 6)
-     (#x3E absolute-x 7))
+     (#x2E absolute    6)
+     (#x3E absolute-x  7))
   "Rotate left"
   (let* ((full (-<> (value)
                  (ash <> 1)
@@ -406,10 +472,10 @@
 
 (define-opcode ror
     ((#x6A accumulator 2)
-     (#x66 zero-page 5)
+     (#x66 zero-page   5)
      (#x76 zero-page-x 6)
-     (#x6E absolute 6)
-     (#x7E absolute-x 7))
+     (#x6E absolute    6)
+     (#x7E absolute-x  7))
   "Rotate right"
   (let* ((val (value))
          (result (-<> val
@@ -536,13 +602,145 @@
   (setf pc (mref/16 nes #xFFFE)))
 
 (define-opcode nop
-    ((#xEA implied 2))
+    ((#xEA implied     2)
+     (#x04 zero-page   3 :illegal t)
+     (#x44 zero-page   3 :illegal t)
+     (#x64 zero-page   3 :illegal t)
+     (#x0C absolute    4 :illegal t)
+     (#x14 zero-page-x 4 :illegal t)
+     (#x34 zero-page-x 4 :illegal t)
+     (#x54 zero-page-x 4 :illegal t)
+     (#x74 zero-page-x 4 :illegal t)
+     (#xD4 zero-page-x 4 :illegal t)
+     (#xF4 zero-page-x 4 :illegal t)
+     (#x1A implied     2 :illegal t)
+     (#x3A implied     2 :illegal t)
+     (#x5A implied     2 :illegal t)
+     (#x7A implied     2 :illegal t)
+     (#xDA implied     2 :illegal t)
+     (#xFA implied     2 :illegal t)
+     (#x80 immediate   2 :illegal t)
+     (#x1C absolute-x  4 :illegal t)
+     (#x3C absolute-x  4 :illegal t)
+     (#x5C absolute-x  4 :illegal t)
+     (#x7C absolute-x  4 :illegal t)
+     (#xDC absolute-x  4 :illegal t)
+     (#xFC absolute-x  4 :illegal t))
   "No operation")
 
 (define-opcode rti
     ((#x40 implied 6))
   "Return from interrupt"
-  (setf status (stack-pop nes)
-        pc (stack-pop/16 nes)))
+  (set-flags nes (stack-pop nes))
+  (setf pc (stack-pop/16 nes)))
 
 
+;;;; Rude Opcodes -------------------------------------------------------------
+;;; https://twitter.com/dril/status/331764878664671234
+
+(define-opcode lax
+    ((#xA7 zero-page    3 :illegal t)
+     (#xB7 zero-page-y  4 :illegal t)
+     (#xAF absolute     4 :illegal t)
+     (#xBF absolute-y   4 :illegal t)
+     (#xA3 pre-indexed  6 :illegal t)
+     (#xB3 post-indexed 5 :illegal t))
+  "Load accumuator and X register"
+  (lda%)
+  (setf x a))
+
+(define-opcode sax
+    ((#x87 zero-page   3 :illegal t)
+     (#x97 zero-page-y 4 :illegal t)
+     (#x8F absolute    4 :illegal t)
+     (#x83 pre-indexed 6 :illegal t))
+  "Store accumulator AND X register"
+  (setf (value) (logand a x)))
+
+(define-opcode dcp
+    ((#xC7 zero-page    5 :illegal t)
+     (#xD7 zero-page-x  6 :illegal t)
+     (#xCF absolute     6 :illegal t)
+     (#xDF absolute-x   7 :illegal t)
+     (#xDB absolute-y   7 :illegal t)
+     (#xC3 pre-indexed  8 :illegal t)
+     (#xD3 post-indexed 8 :illegal t))
+  "Decrement and compare"
+  (dec%)
+  (cmp%))
+
+(define-opcode isb
+    ((#xE7 zero-page    5 :illegal t)
+     (#xF7 zero-page-x  6 :illegal t)
+     (#xEF absolute     6 :illegal t)
+     (#xFF absolute-x   7 :illegal t)
+     (#xFB absolute-y   7 :illegal t)
+     (#xE3 pre-indexed  8 :illegal t)
+     (#xF3 post-indexed 8 :illegal t))
+  "Increment and subtract"
+  (inc%)
+  (sbc%))
+
+(define-opcode kil
+    ((#x02 implied 1 :illegal t)
+     (#x12 implied 1 :illegal t)
+     (#x22 implied 1 :illegal t)
+     (#x32 implied 1 :illegal t)
+     (#x42 implied 1 :illegal t)
+     (#x52 implied 1 :illegal t)
+     (#x62 implied 1 :illegal t)
+     (#x72 implied 1 :illegal t)
+     (#x92 implied 1 :illegal t)
+     (#xB2 implied 1 :illegal t)
+     (#xD2 implied 1 :illegal t)
+     (#xF2 implied 1 :illegal t))
+    "Kill processor"
+  (break "Got KIL opcode"))
+
+(define-opcode slo
+    ((#x07 zero-page    5 :illegal t)
+     (#x17 zero-page-x  6 :illegal t)
+     (#x0F absolute     6 :illegal t)
+     (#x1F absolute-x   7 :illegal t)
+     (#x1B absolute-y   7 :illegal t)
+     (#x03 pre-indexed  8 :illegal t)
+     (#x13 post-indexed 8 :illegal t))
+  "Shift left then OR"
+  (asl%)
+  (ora%))
+
+(define-opcode rla
+    ((#x27 zero-page    5 :illegal t)
+     (#x37 zero-page-x  6 :illegal t)
+     (#x2F absolute     6 :illegal t)
+     (#x3F absolute-x   7 :illegal t)
+     (#x3B absolute-y   7 :illegal t)
+     (#x23 pre-indexed  8 :illegal t)
+     (#x33 post-indexed 8 :illegal t))
+  "Rotate left then AND"
+  (rol%)
+  (and%))
+
+(define-opcode rra
+    ((#x67 zero-page    5 :illegal t)
+     (#x77 zero-page-x  6 :illegal t)
+     (#x6F absolute     6 :illegal t)
+     (#x7F absolute-x   7 :illegal t)
+     (#x7B absolute-y   7 :illegal t)
+     (#x63 pre-indexed  8 :illegal t)
+     (#x73 post-indexed 8 :illegal t))
+  "Rotate right then add to accumulator"
+  (ror%)
+  (adc%))
+
+(define-opcode sre
+    ((#x47 zero-page    5 :illegal t)
+     (#x57 zero-page-x  6 :illegal t)
+     (#x4F absolute     6 :illegal t)
+     (#x5F absolute-x   7 :illegal t)
+     (#x5B absolute-y   7 :illegal t)
+     (#x43 pre-indexed  8 :illegal t)
+     (#x53 post-indexed 8 :illegal t))
+  "Shift right and XOR"
+  (lsr%)
+  (eor%))

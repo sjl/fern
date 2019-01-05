@@ -1,53 +1,56 @@
 (in-package :fern)
 
-(defun disassemble-op (nes address)
-  "Disassemble the operation at `address`.
-
-  Returns three values:
-
-  * The disassembly as a list.
-  * The disassembly as a string.
-  * A list of the raw bytes of the operation.
-
-  "
-  (let* ((opcode (mref nes address))
+(defun retrieve-instruction (nes address)
+  (let* ((opcode (mref nes (wrap address 16)))
          (op (aref *opcode-data* opcode)))
-    (with-op (op)
-      (cond
-        ((not legal) (values '(ILLEGAL) "???" (list opcode)))
-        ((not (has-operand-p op)) (values `(,name) (string name) (list opcode)))
-        (t (let* ((operand-width (get addressing-mode 'operand-width))
-                  (operand (operand-at nes (1+/16 address) operand-width)))
-             (values `(,name (,addressing-mode ,operand))
-                     (format nil "~A ~A"
-                             name
-                             (render-addressing-mode-operand addressing-mode
-                                                             operand))
-                     (iterate (repeat width)
-                              (for i :from address) ; todo should be 1+/16...
-                              (collect (mref nes i))))))))))
+    (iterate (repeat (op-width op))
+             (for a :from address)
+             (collect (mref nes (wrap a 16))))))
 
-(defun pretty-print-instruction-at
-    (nes address &optional (stream *standard-output*))
-  (multiple-value-bind (op-list op-string bytes)
-      (disassemble-op nes address)
-    (declare (ignore op-list))
-    (values (format stream "~4,'0X  ~9A ~A"
-                    address
-                    (format nil "~{~2,'0X~^ ~}" bytes)
-                    op-string)
-            (length bytes))))
+(defun operand-bytes-to-operand (bytes)
+  (ecase (length bytes)
+    (0 nil)
+    (1 (first bytes))
+    (2 (cat (first bytes) (second bytes)))))
+
+(defun instruction-sexp (instruction)
+  (destructuring-bind (opcode &rest operand-bytes) instruction
+    (let ((op (aref *opcode-data* opcode)))
+      (cons (op-name op)
+            (render-addressing-mode-operand-to-list
+              (op-addressing-mode op)
+              (operand-bytes-to-operand operand-bytes))))))
+
+(defun instruction-string (instruction)
+  (destructuring-bind (opcode &rest operand-bytes) instruction
+    (let ((op (aref *opcode-data* opcode)))
+      (format nil "~C~A ~A"
+              (if (op-legal op) #\Space #\*)
+              (op-name op)
+              (render-addressing-mode-operand-to-string
+                (op-addressing-mode op)
+                (operand-bytes-to-operand operand-bytes))))))
+
+
+(defun pretty-print-instruction-at (nes address)
+  (let ((instruction (retrieve-instruction nes address)))
+    (format t "~4,'0X  ~9A~A"
+            address
+            (format nil "~{~2,'0X~^ ~}" instruction)
+            (instruction-string instruction))
+    (length instruction)))
+
 
 (defun disassemble-chunk (nes address)
   (iterate (repeat 24)
-           (incf address (nth-value 1 (pretty-print-instruction-at nes address))))
+           (incf address (pretty-print-instruction-at nes address))
+           (terpri))
   address)
 
 (defun disassemble-interactively (nes starting-address)
   (iterate
     (for address :first starting-address :then next-address)
     (for next-address = (disassemble-chunk nes address))
-    (terpri)
     (for line = (read-line))
     (cond
       ((string= line "") nil)
@@ -58,7 +61,8 @@
 (defun log-state (nes)
   (with-nes (nes)
     (format t "~47A A:~2,'0X X:~2,'0X Y:~2,'0X P:~2,'0X SP:~2,'0X "
-            (pretty-print-instruction-at nes pc nil)
+            (with-output-to-string (*standard-output*)
+              (pretty-print-instruction-at nes pc))
             a x y status sp)
     (force-output)))
 
