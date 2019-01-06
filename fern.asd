@@ -23,7 +23,9 @@
                (:file "package")
                (:module "src" :serial t
                 :components ((:file "utils")
-                             (:file "base")
+                             (:file "cartridge")
+                             (:file "nes")
+                             (:file "memory")
                              (:file "addressing-modes")
                              (:file "opcodes")
                              (:file "disassemble")

@@ -1,19 +1,5 @@
 (in-package :fern)
 
-
-
-;;;; Cartridges (aka Mappers) -------------------------------------------------
-(defgeneric make-cartridge (id prg chr ram))
-
-(defstruct (cartridge (:constructor nil))
-  (id (required 'id) :type (or null (integer 0 256)))
-  (reader #'unimplemented :type function-designator)
-  (writer #'unimplemented :type function-designator)
-  (prg)
-  (chr)
-  (wram))
-
-
 ;;;; NES ----------------------------------------------------------------------
 (defstruct (nes (:conc-name nil))
   (running t :type boolean)
@@ -69,7 +55,9 @@
   cartridge
   cycles
   carry zero interrupt-disable decimal-mode break-command overflow negative
-  carry-bit zero-bit interrupt-disable-bit decimal-mode-bit break-command-bit overflow-bit negative-bit)
+  carry-bit zero-bit interrupt-disable-bit
+  decimal-mode-bit break-command-bit
+  overflow-bit negative-bit)
 
 
 ;;;; Vectors ------------------------------------------------------------------
@@ -94,67 +82,4 @@
           y 0
           sp #xFD
           pc (reset-vector nes))))
-
-
-;;;; Memory -------------------------------------------------------------------
-(defun internal-read (nes address)
-  (if (< address #x2000)
-    (aref (ram nes) (mod address #x800))
-    (TODO)))
-
-(defun internal-write (nes address value)
-  (if (< address #x2000)
-    (setf (aref (ram nes) (mod address #x800)) value)
-    (TODO))
-  nil)
-
-
-(defun cartridge-read (nes address)
-  (let ((cartridge (cartridge nes)))
-    (funcall (cartridge-reader cartridge) cartridge address)))
-
-(defun cartridge-write (nes address value)
-  (let ((cartridge (cartridge nes)))
-    (funcall (cartridge-writer cartridge) cartridge address value))
-  nil)
-
-
-(defun mref (nes address)
-  (if (< address #x4020)
-    (internal-read nes address)
-    (cartridge-read nes address)))
-
-(defun (setf mref) (new-value nes address)
-  (if (< address #x4020)
-    (internal-write nes address new-value)
-    (cartridge-write nes address new-value))
-  new-value)
-
-
-(defun mref/16 (nes address)
-  (cat (mref nes address)
-       (mref nes (1+/16 address))))
-
-
-;;;; Stack --------------------------------------------------------------------
-(defun-inline stack-address (nes)
-  (logior #x0100 (sp nes)))
-
-
-(defun stack-push (nes value)
-  (setf (mref nes (stack-address nes)) value)
-  (decf/8 (sp nes)))
-
-(defun stack-push/16 (nes value)
-  (stack-push nes (msb value))
-  (stack-push nes (lsb value)))
-
-
-(defun stack-pop (nes)
-  (incf/8 (sp nes))
-  (mref nes (stack-address nes)))
-
-(defun stack-pop/16 (nes)
-  (cat (stack-pop nes)
-       (stack-pop nes)))
 
