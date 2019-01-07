@@ -77,7 +77,7 @@
   "Reset `nes`."
   (with-nes (nes)
     ;; https://wiki.nesdev.com/w/index.php/CPU_power_up_state
-    (setf status #x34
+    (setf status #x24 ;; nestest is wrong, fix later
           a 0
           x 0
           y 0

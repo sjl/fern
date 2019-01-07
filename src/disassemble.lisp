@@ -17,7 +17,7 @@
   (destructuring-bind (opcode &rest operand-bytes) instruction
     (let ((op (aref *opcode-data* opcode)))
       (cons (op-name op)
-            (render-addressing-mode-operand-to-list
+            (render-operand-to-list
               (op-addressing-mode op)
               (operand-bytes-to-operand operand-bytes))))))
 
@@ -27,17 +27,27 @@
       (format nil "~C~A ~A"
               (if (op-legal op) #\Space #\*)
               (op-name op)
-              (render-addressing-mode-operand-to-string
+              (render-operand-to-string
                 (op-addressing-mode op)
                 (operand-bytes-to-operand operand-bytes))))))
 
+(defun instruction-nestest (instruction)
+  (destructuring-bind (opcode &rest operand-bytes) instruction
+    (declare (ignore operand-bytes))
+    (let ((op (aref *opcode-data* opcode)))
+      (format nil "~C~A ~A"
+              (if (op-legal op) #\Space #\*)
+              (op-name op)
+              (render-operand-to-nestest-string
+                (op-addressing-mode op)
+                *nes*))))) ; fuck this
 
 (defun pretty-print-instruction-at (nes address)
   (let ((instruction (retrieve-instruction nes address)))
     (format t "~4,'0X  ~9A~A"
             address
             (format nil "~{~2,'0X~^ ~}" instruction)
-            (instruction-string instruction))
+            (instruction-nestest instruction))
     (length instruction)))
 
 
@@ -67,6 +77,3 @@
     (force-output)))
 
 
-;; C000  4C F5 C5  JMP $C5F5                       A:00 X:00 Y:00 P:24 SP:FD PPU:  0,  0 CYC:7
-;; C000  4C F5 C5  JMP $C5F5                       A:00 X:00 Y:00 P:24 SP:FDq
-;; C000  4C F5 C5   JMP $C5F5                      A:00 X:00 Y:00 P:24 SP:FD

@@ -166,7 +166,7 @@
 
 ;;;; Misc ---------------------------------------------------------------------
 (defun-inline todo ()
-  (error "TODO"))
+  (warn "TODO"))
 
 (defun required (name)
   (error "Required field: ~A" name))

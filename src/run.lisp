@@ -1,8 +1,6 @@
 (in-package :fern)
 
 (defvar *nes* nil)
-(defvar *log* nil)
-(defvar *step* nil)
 
 
 (defun load-cartridge-into-nes (nes path)
@@ -21,18 +19,32 @@
     (incf/16 (pc nes))
     (funcall opcode-function nes)))
 
-(defun step/log (nes)
-  (when (or *log* *step*)
+(defun step/log (nes step log)
+  (when (or log step)
     (log-state nes)
-    (if *step*
+    (if step
       (progn (force-output) (read-line))
       (terpri))))
 
 
-(defun run (path)
+(defun run (path &key limit initial-pc step log)
   (let ((nes (make-nes)))
     (setf *nes* nes)
     (load-cartridge-into-nes nes path)
     (reset nes)
-    (iterate (step/log nes)
-             (execute-instruction nes))))
+    (when initial-pc
+      (setf (pc nes) initial-pc))
+    (iterate
+      (with remaining = limit)
+      (when remaining
+        (if (zerop remaining)
+          (return)
+          (decf remaining)))
+      (step/log nes step log)
+      (execute-instruction nes))))
+
+(defun run-nestest ()
+  (with-open-file (*standard-output* "test/output.log"
+                                     :direction :output
+                                     :if-exists :supersede)
+    (run "test/nestest.nes" :limit 8991 :initial-pc #xC000 :step nil :log t)))
