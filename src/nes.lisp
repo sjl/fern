@@ -6,11 +6,13 @@
   (a 0 :type u8)
   (x 0 :type u8)
   (y 0 :type u8)
-  (status 0 :type u8)
   (pc 0 :type u16)
   (sp 0 :type u8)
+  (status 0 :type u8)
   (ram (make-memory #x0800) :type (memory #x0800))
   (cartridge (make-cartridge nil nil nil nil) :type cartridge)
+  (ppu nil :type (or null ppu))
+  (apu nil :type (or null apu))
   (cycles 0 :type fixnum))
 
 (defmacro define-flag (bit name)
@@ -73,7 +75,6 @@
 ;;;; Reset --------------------------------------------------------------------
 (defun reset (nes)
   "Reset `nes`."
-  (setf *current* nes)
   (with-nes (nes)
     ;; https://wiki.nesdev.com/w/index.php/CPU_power_up_state
     (setf status #x34

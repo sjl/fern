@@ -666,7 +666,7 @@
   (setf break-command t)
   (stack-push/16 nes pc)
   (stack-push nes (dpb #b11 (byte 2 4) status)) ;; see comment in php
-  (setf pc (mref/16 nes #xFFFE)))
+  (setf pc (irq-vector nes)))
 
 (define-opcode nop
     ((#xEA implied     2)

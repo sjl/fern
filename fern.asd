@@ -24,6 +24,8 @@
                (:module "src" :serial t
                 :components ((:file "utils")
                              (:file "cartridge")
+                             (:file "apu")
+                             (:file "ppu")
                              (:file "nes")
                              (:file "memory")
                              (:file "addressing-modes")
