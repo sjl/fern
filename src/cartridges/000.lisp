@@ -36,4 +36,5 @@
   (aref (cartridge-0-character cartridge) address))
 
 (defmethod cartridge-write-character ((cartridge cartridge-0) address value)
-  (error "Cannot write to CHR ROM for cartridge type 0."))
+  (check-type address (integer #x0000 (#x2000)))
+  (setf (aref (cartridge-0-character cartridge) address) value))

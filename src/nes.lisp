@@ -11,8 +11,8 @@
   (status 0 :type u8)
   (ram (make-memory #x0800) :type (memory #x0800))
   (cartridge (make-cartridge nil nil nil nil) :type cartridge)
-  (ppu nil :type (or null ppu))
-  (apu nil :type (or null apu))
+  (ppu (make-ppu) :type ppu)
+  (apu (make-apu) :type apu)
   (cycles 0 :type fixnum))
 
 (defmacro define-flag (bit name)

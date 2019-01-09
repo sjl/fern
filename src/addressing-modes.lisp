@@ -10,12 +10,14 @@
   (prog1 (operand-at nes (pc nes) width)
     (incf/16 (pc nes) width)))
 
+
 ;;; These functions are used to render operands to disassembled forms.  The
 ;;; nestest one is a hack because it needs to access other NES data to render
 ;;; everything they want.
 (defgeneric render-operand-to-string (mode operand))
 (defgeneric render-operand-to-list (mode operand))
 (defgeneric render-operand-to-nestest-string (mode nes))
+
 
 ;;; The debug- functions are used when we're pointing at the opcode of an
 ;;; instruction and want to disassemble it into something without actually

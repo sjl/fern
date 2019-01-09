@@ -1,5 +1,6 @@
 (in-package :fern)
 
+
 ;;;; Read ---------------------------------------------------------------------
 (defun read-internal-memory (nes address)
   (aref (ram nes) (mirrored-address #x0000 #x800 address)))
@@ -34,26 +35,16 @@
       (#x4013 (read-apu/delta-modulation-data-length apu))
       (#x4015 (read-apu/sound-channels apu)))))
 
-(defun read-low-i/o-register (nes address)
-  (let ((ppu (ppu nes)))
-    (ecase (mirrored-address #x2000 #x2008 address)
-      (#x2000 (read-ppu/control ppu))
-      (#x2001 (read-ppu/mask ppu))
-      (#x2002 (read-ppu/status ppu))
-      (#x2003 (read-ppu/sprite-ram-address ppu))
-      (#x2004 (read-ppu/sprite-ram-data ppu))
-      (#x2005 (read-ppu/scroll ppu))
-      (#x2006 (read-ppu/address ppu))
-      (#x2007 (read-ppu/data ppu)))))
+(defun read-sprite-dma (nes)
+  (read-ppu/undefined (ppu nes)))
 
-(defun read-high-i/o-register (nes address)
+(defun read-i/o-register (nes address)
   (cond
     ((<= address #x4013) (read-apu nes address))
-    ((= address #x4014) (read-ppu/sprite-dma (ppu nes)))
+    ((= address #x4014) (read-sprite-dma nes))
     ((= address #x4015) (read-apu nes address))
     ((= address #x4016) (read-joypad-1 nes))
-    ((= address #x4017) (read-joypad-2 nes)))
-  )
+    ((= address #x4017) (read-joypad-2 nes))))
 
 (defun read-test-mode-register (nes address)
   (declare (ignore nes))
@@ -63,8 +54,8 @@
 (defun internal-read (nes address)
   (cond
     ((< address #x2000) (read-internal-memory nes address))
-    ((< address #x4000) (read-low-i/o-register nes address))
-    ((< address #x4018) (read-high-i/o-register nes address))
+    ((< address #x4000) (read-ppu (ppu nes) address))
+    ((< address #x4018) (read-i/o-register nes address))
     ((< address #x4020) (read-test-mode-register nes address))
     (t (error "Address ~4,'0X out of range for internal memory read." address))))
 
@@ -103,22 +94,26 @@
       (#x4013 (write-apu/delta-modulation-data-length apu value))
       (#x4015 (write-apu/sound-channels apu value)))))
 
-(defun write-low-i/o-register (nes address value)
-  (let ((ppu (ppu nes)))
-    (ecase (mirrored-address #x2000 #x2008 address)
-      (#x2000 (write-ppu/control ppu value))
-      (#x2001 (write-ppu/mask ppu value))
-      (#x2002 (write-ppu/status ppu value))
-      (#x2003 (write-ppu/sprite-ram-address ppu value))
-      (#x2004 (write-ppu/sprite-ram-data ppu value))
-      (#x2005 (write-ppu/scroll ppu value))
-      (#x2006 (write-ppu/address ppu value))
-      (#x2007 (write-ppu/data ppu value)))))
+(defun write-sprite-dma (nes value)
+  ;; http://wiki.nesdev.com/w/index.php/PPU_registers#OAMDMA
+  (iterate
+    (with sprite-ram = (sprite-ram (ppu nes)))
+    (for source :from (cat #x00 value) :to (cat #xFF value))
+    (for dest :from #x00) ; technically we should start from sprite-ram-address…
+    (setf (aref sprite-ram dest) (mref nes source)))
+  ;; > The CPU is suspended during the transfer, which will take 513 or 514
+  ;; > cycles after the $4014 write tick. (1 dummy read cycle while waiting for
+  ;; > writes to complete, +1 if on an odd CPU cycle, then 256 alternating
+  ;; > read/write cycles.)
+  (incf (cycles nes)
+        (if (oddp (cycles nes))
+          514
+          513)))
 
-(defun write-high-i/o-register (nes address value)
+(defun write-i/o-register (nes address value)
   (cond
     ((<= address #x4013) (write-apu nes address value))
-    ((= address #x4014) (write-ppu/sprite-dma (ppu nes) value))
+    ((= address #x4014) (write-sprite-dma nes value))
     ((= address #x4015) (write-apu nes address value))
     ((= address #x4016) (write-joypad-1 nes value))
     ((= address #x4017) (write-joypad-2 nes value))))
@@ -131,11 +126,10 @@
 (defun internal-write (nes address value)
   (cond
     ((< address #x2000) (write-internal-memory nes address value))
-    ((< address #x4000) (write-low-i/o-register nes address value))
-    ((< address #x4018) (write-high-i/o-register nes address value))
+    ((< address #x4000) (write-ppu (ppu nes) address value))
+    ((< address #x4018) (write-i/o-register nes address value))
     ((< address #x4020) (write-test-mode-register nes address value))
-    (t (error "Address ~4,'0X out of range for internal memory write." address)))
-  nil)
+    (t (error "Address ~4,'0X out of range for internal memory write." address))))
 
 
 ;;;; API ----------------------------------------------------------------------
