@@ -26,8 +26,8 @@
     (check-bank-length 0 \"Save RAM\" ram 1)
 
   "
-  (once-only (banks)
-    (with-gensyms (acceptable-lengths%)
+  (alexandria:once-only (banks)
+    (alexandria:with-gensyms (acceptable-lengths%)
       `(let ((,acceptable-lengths% ',acceptable-lengths))
          (assert (member (length ,banks) ,acceptable-lengths%) ()
            "Invalid number of ~A banks for cartridge type ~A (expected one of ~A, got ~D)."

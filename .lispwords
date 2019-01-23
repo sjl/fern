@@ -1,2 +1,3 @@
 (2 define-opcode)
 (1 address-case)
+(2 def-key-callback)

@@ -12,7 +12,8 @@
   (video-ram-address #x00 :type u16)
   (video-ram-increment 1 :type (member 1 32))
   (temporary-address #x00 :type u16)
-  (write-toggle t :type boolean))
+  (write-toggle t :type boolean)
+  (timestamp-pattern-tables 0 :type fixnum))
 
 (define-with-macro (ppu :conc-name nil)
   video-ram sprite-ram palette-ram
@@ -21,7 +22,8 @@
   video-ram-address
   temporary-address
   video-ram-increment
-  write-toggle)
+  write-toggle
+  timestamp-pattern-tables)
 
 
 ;;;; Video Memory -------------------------------------------------------------
@@ -40,7 +42,8 @@
 
 (defun write-pattern-tables (ppu address value)
   (check-type address (integer #x0000 (#x2000)))
-  (cartridge-write-character (ppu-cartridge ppu) address value))
+  (cartridge-write-character (ppu-cartridge ppu) address value)
+  (incf (timestamp-pattern-tables ppu)))
 
 (defun write-name-tables (ppu address value)
   (check-type address (integer #x2000 (#x3F00)))
@@ -183,6 +186,7 @@
     (#x2005 (write-ppu/scroll ppu value))
     (#x2006 (write-ppu/address ppu value))
     (#x2007 (write-ppu/data ppu value))))
+
 
 ;;;; Pattern Tables / Tiles ----------------------------------------------------
 (deftype pixel ()

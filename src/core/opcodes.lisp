@@ -57,9 +57,10 @@
     (opcode &key cycles name addressing-mode legal? documentation suffix)
   ;; Define a function for the opcode and patch it into the two arrays.  The
   ;; function will used the macro defined in `define-opcode` to expand its guts.
-  (let* ((full-name (symb name '/ addressing-mode
-                          (if suffix (format nil "/~D" suffix) "")))
-         (macro-name (symb name '%)))
+  (let* ((full-name (alexandria:symbolicate
+                      name '/ addressing-mode
+                      (if suffix (format nil "/~D" suffix) "")))
+         (macro-name (alexandria:symbolicate name '%)))
     `(progn
        (declaim (ftype (function (nes) null) ,full-name))
        (defun ,full-name (nes)
@@ -146,7 +147,7 @@
   ;;             (setf (value) (1+ (value)))
   ;;             (incf cycles 3)))))
   `(progn
-     (defmacro ,(symb name '%) ()
+     (defmacro ,(alexandria:symbolicate name '%) ()
        '(progn ,@body))
      ,@(iterate
          (with suffix = -1)
@@ -169,7 +170,7 @@
   will be set based on the value copied.
 
   "
-  (with-gensyms (val)
+  (alexandria:with-gensyms (val)
     `(let ((,val ,source))
        (setf ,destination ,val
              ,@(iterate

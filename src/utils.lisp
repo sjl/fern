@@ -120,7 +120,7 @@
   clause's body evaluated.
 
   "
-  (once-only (address)
+  (alexandria:once-only (address)
     `(cond
        ,@(iterate
           (for (value . body) :in clauses)

@@ -11,29 +11,32 @@
   :depends-on (
 
                :alexandria
+               :cl-glfw3
+               :cl-opengl
                :iterate
                :losh
 
                )
 
   :serial t
-  :components ((:module "vendor" :serial t
-                :components ((:file "quickutils-package")
-                             (:file "quickutils")))
-               (:file "package")
+  :components ((:file "package")
                (:module "src" :serial t
                 :components ((:file "utils")
-                             (:file "cartridge")
-                             (:file "apu")
-                             (:file "ppu")
-                             (:file "nes")
-                             (:file "memory")
-                             (:file "addressing-modes")
-                             (:file "opcodes")
-                             (:file "disassemble")
-                             (:file "run")
+                             (:module "core" :serial t
+                              :components ((:file "cartridge")
+                                           (:file "apu")
+                                           (:file "ppu")
+                                           (:file "nes")
+                                           (:file "memory")
+                                           (:file "addressing-modes")
+                                           (:file "opcodes")
+                                           (:file "disassemble")))
                              (:module "files" :serial nil
                               :components ((:file "ines")))
                              (:module "cartridges" :serial nil
                               :components ((:file "empty")
-                                           (:file "000")))))))
+                                           (:file "000")))
+                             (:module "gui" :serial t
+                              :components ((:file "base")
+                                           (:file "pattern-table-viewer")))
+                             (:file "run")))))
