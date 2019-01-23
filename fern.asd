@@ -11,6 +11,7 @@
   :depends-on (
 
                :alexandria
+               :bordeaux-threads
                :cl-glfw3
                :cl-opengl
                :iterate

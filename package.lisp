@@ -6,12 +6,13 @@
   (:use :cl :iterate :losh :fern)
   (:export
     :gui
+    :title
     :width
     :height
     :dirty
     :nes
     :window
-    :with-gui
+    :open-gui
 
     :initialize
     :render

@@ -54,7 +54,7 @@
   (make-instance name :name name))
 
 (defun recompile-shader (shader)
-  (format t "Recompiling ~A~%" shader)
+  ;; (format t "Recompiling ~A~%" shader)
   (when (program shader)
     (gl:delete-program (program shader)))
   (setf (tag shader) (current-tag shader)
@@ -124,6 +124,7 @@
 ;;;; Base GUI -----------------------------------------------------------------
 (defclass* (gui :conc-name nil) ()
   ((nes :type fern::nes)
+   (title)
    (window)
    (width)
    (height)
@@ -143,12 +144,35 @@
 (defun window-gui (window)
   (gethash window *window-guis*))
 
-(defmacro with-gui ((gui) &body body)
-  (alexandria:once-only (gui)
-    `(unwind-protect
-       (progn (setf (gethash (window ,gui) *window-guis*) ,gui)
-              ,@body)
-       (remhash (window ,gui) *window-guis*))))
+(defmacro with-gui-window-mapping ((gui window) &body body)
+  (alexandria:once-only (gui window)
+    `(unwind-protect (progn
+                       (setf (gethash ,window *window-guis*) ,gui)
+                       ,@body)
+       (remhash ,window *window-guis*))))
+
+
+;; (defun open-gui (gui)
+;;   (glfw:with-init
+;;     (glfw:with-window (:title (title gui)
+;;                        :width (width gui)
+;;                        :height (height gui)
+;;                        :context-version-major 3
+;;                        :context-version-minor 3
+;;                        :opengl-profile :opengl-core-profile)
+;;       (glfw:set-key-callback 'handle-key-callback)
+;;       (glfw:set-window-size-callback 'handle-resize-callback)
+;;       (glfw:set-window-refresh-callback 'handle-refresh-callback)
+;;       (let ((window glfw:*window*))
+;;         (setf (window gui) window)
+;;         (with-gui-window-mapping (gui window)
+;;           (initialize gui)
+;;           (unwind-protect
+;;               (loop :until (glfw:window-should-close-p window) :do
+;;                     (when (render gui)
+;;                       (glfw:swap-buffers window))
+;;                     (glfw:poll-events))
+;;             (teardown gui)))))))
 
 
 ;;;; GLFW Boilerplate ---------------------------------------------------------
@@ -265,4 +289,66 @@
 
 (defun use-texture (texture)
   (gl:bind-texture :texture-2d texture))
+
+
+;;;; Main Loop ----------------------------------------------------------------
+(defvar *new-guis* nil) ; TODO thread safety on this thing
+(defvar *guis* nil)
+(defvar *gui-thread* nil)
+(defparameter *running* nil)
+
+(defun add-new-gui (gui)
+  (glfw:create-window :title (title gui)
+                      :width (width gui)
+                      :height (height gui)
+                      :context-version-major 3
+                      :context-version-minor 3
+                      :opengl-profile :opengl-core-profile)
+  (setf (window gui) glfw:*window*
+        (gethash glfw:*window* *window-guis*) gui)
+  (initialize gui)
+  (glfw:set-key-callback 'handle-key-callback)
+  (glfw:set-window-size-callback 'handle-resize-callback)
+  (glfw:set-window-refresh-callback 'handle-refresh-callback)
+  (push gui *guis*))
+
+(defun add-new-guis ()
+  (map nil #'add-new-gui *new-guis*)
+  (setf *new-guis* nil))
+
+(defun render-gui (gui)
+  (glfw:make-context-current (window gui))
+  (if (glfw:window-should-close-p)
+    (progn (teardown gui)
+           (glfw:destroy-window)
+           (alexandria:removef *guis* gui))
+    (when (render gui)
+      (glfw:swap-buffers))))
+
+(defun render-guis ()
+  (map nil #'render-gui *guis*))
+
+(defun gui-loop% ()
+  (setf *running* t)
+  (clrhash *window-guis*)
+  (glfw:with-init
+    (unwind-protect
+        (iterate (while *running*)
+                 (add-new-guis)
+                 (render-guis)
+                 (glfw:poll-events))
+      (map nil #'teardown *guis*)
+      (setf *guis* nil
+            *new-guis* nil))))
+
+(defun gui-loop (&key background)
+  (setf *running* nil)
+  (sleep 1/20) ; close enough
+  (if background
+    (setf *gui-thread* (bt:make-thread #'gui-loop% :name "Fern GUI thread"))
+    (gui-loop%)))
+
+(defun open-gui (gui)
+  (push gui *new-guis*))
+
 
