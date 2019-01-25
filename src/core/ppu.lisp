@@ -13,7 +13,8 @@
   (video-ram-increment 1 :type (member 1 32))
   (temporary-address #x00 :type u16)
   (write-toggle t :type boolean)
-  (timestamp-pattern-tables 0 :type fixnum))
+  (timestamp-pattern-tables 0 :type fixnum)
+  (timestamp-name-tables 0 :type fixnum))
 
 (define-with-macro (ppu :conc-name nil)
   video-ram sprite-ram palette-ram
@@ -49,7 +50,8 @@
   (check-type address (integer #x2000 (#x3F00)))
   (setf (aref (video-ram ppu)
               (mirrored-address #x2000 #x3000 address :from-zero t))
-        value))
+        value)
+  (incf (timestamp-name-tables ppu)))
 
 (defun write-palettes (ppu address value)
   (check-type address (integer #x3F00 (#x4000)))

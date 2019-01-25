@@ -96,6 +96,32 @@
                            ,symbol)))))))
 
 
+(define-shader textured ()
+  :vertex "
+  #version 330 core
+  layout (location = 0) in vec3 inPosition;
+  layout (location = 1) in vec2 inTextureCoord;
+
+  out vec2 textureCoord;
+
+  void main () {
+      gl_Position = vec4(inPosition, 1.0);
+      textureCoord = inTextureCoord;
+  }
+  "
+  :fragment "
+  #version 330 core
+
+  in vec2 textureCoord;
+  out vec4 FragColor;
+  uniform sampler2D tex;
+
+  void main () {
+      FragColor = texture(tex, textureCoord);
+  }
+  ")
+
+
 ;;;; OpenGL Boilerplate -------------------------------------------------------
 (defun allocate-opengl-array (lisp-array type)
   (let ((opengl-array (gl:alloc-gl-array type (length lisp-array))))
@@ -132,8 +158,11 @@
 
 
 (defgeneric initialize (gui))
+(defgeneric dirtyp (gui))
 (defgeneric render (gui))
 (defgeneric teardown (gui))
+
+(defmethod dirtyp ((gui gui)) nil)
 
 
 (defparameter *window-guis*
@@ -150,29 +179,6 @@
                        (setf (gethash ,window *window-guis*) ,gui)
                        ,@body)
        (remhash ,window *window-guis*))))
-
-
-;; (defun open-gui (gui)
-;;   (glfw:with-init
-;;     (glfw:with-window (:title (title gui)
-;;                        :width (width gui)
-;;                        :height (height gui)
-;;                        :context-version-major 3
-;;                        :context-version-minor 3
-;;                        :opengl-profile :opengl-core-profile)
-;;       (glfw:set-key-callback 'handle-key-callback)
-;;       (glfw:set-window-size-callback 'handle-resize-callback)
-;;       (glfw:set-window-refresh-callback 'handle-refresh-callback)
-;;       (let ((window glfw:*window*))
-;;         (setf (window gui) window)
-;;         (with-gui-window-mapping (gui window)
-;;           (initialize gui)
-;;           (unwind-protect
-;;               (loop :until (glfw:window-should-close-p window) :do
-;;                     (when (render gui)
-;;                       (glfw:swap-buffers window))
-;;                     (glfw:poll-events))
-;;             (teardown gui)))))))
 
 
 ;;;; GLFW Boilerplate ---------------------------------------------------------
@@ -322,7 +328,9 @@
     (progn (teardown gui)
            (glfw:destroy-window)
            (alexandria:removef *guis* gui))
-    (when (render gui)
+    (when (or (dirty gui) (dirtyp gui))
+      (setf (dirty gui) nil)
+      (render gui)
       (glfw:swap-buffers))))
 
 (defun render-guis ()
@@ -333,10 +341,13 @@
   (clrhash *window-guis*)
   (glfw:with-init
     (unwind-protect
-        (iterate (while *running*)
-                 (add-new-guis)
-                 (render-guis)
-                 (glfw:poll-events))
+        (iterate
+          (timing real-time :per-iteration-into loop-time)
+          (pr 'time (* loop-time internal-time-units-per-second))
+          (while *running*)
+          (add-new-guis)
+          (render-guis)
+          (glfw:poll-events))
       (map nil #'teardown *guis*)
       (setf *guis* nil
             *new-guis* nil))))

@@ -13,6 +13,10 @@
     :nes
     :window
     :open-gui
+    :gui-loop
+
+    :textured
+    :use-shader/textured
 
     :initialize
     :render
@@ -43,5 +47,12 @@
   (:use :cl :iterate :losh :fern :fern/gui)
   (:shadow
     :open)
+  (:export
+    :open))
+
+(defpackage :fern/gui/name-table-viewer
+  (:use :cl :iterate :losh :fern :fern/gui)
+  (:shadow
+   :open)
   (:export
     :open))

@@ -1,16 +1,16 @@
-(in-package :fern/gui/pattern-table-viewer)
+(in-package :fern/gui/name-table-viewer)
 
 ;;;; Data ---------------------------------------------------------------------
-(defconstant +w+ 256)
-(defvar *pattern-table-viewer* nil)
+(defconstant +w+ 512)
+(defvar *name-table-viewer* nil)
 
 
 ;;;; Implementation -----------------------------------------------------------
-(defclass* (pattern-table-viewer :conc-name nil) (gui)
+(defclass* (name-table-viewer :conc-name nil) (gui)
   ((texture)
    (quad)
    (shader)
-   (pixels :initform (make-array (* +w+ +w+ 3) :initial-element 100))
+   (pixels :initform (make-array (* +w+ +w+ 3) :initial-element 0))
    (timestamp :initform -1 :type fixnum)))
 
 
@@ -41,42 +41,42 @@
 
 
 (defun refresh-pixels (gui)
-  (let ((pixels (pixels gui))
-        (nes (nes gui)))
-    (do-range ((table 0 2)
-               (tile 0 256)
-               (row 0 8)
-               (col 0 8))
-      (setf (pixel-ref pixels
-                       (+ (* 128 table)
-                          (* 8 (mod tile 16))
-                          col)
-                       (+ (* 8 (truncate tile 16))
-                          row))
-            (case (fern::pixel nes table tile row col)
-              (0 (values 0 0 0))
-              (1 (values 255 100 0))
-              (2 (values 50 255 50))
-              (3 (values 0 100 255)))))))
+  (let ((pixels (pixels gui)))
+    ;; top left
+    (do-range ((row 0 240)
+               (col 0 256))
+      (setf (pixel-ref pixels col row) (values 100 0 50)))
+    ;; top right
+    (do-range ((row 0 240)
+               (col 256 512))
+      (setf (pixel-ref pixels col row) (values 0 100 50)))
+    ;; bottom left
+    (do-range ((row 240 480)
+               (col 0 256))
+      (setf (pixel-ref pixels col row) (values 50 100 0)))
+    ;; bottom right
+    (do-range ((row 240 480)
+               (col 256 512))
+      (setf (pixel-ref pixels col row) (values 0 50 100)))))
 
 
-(defmethod initialize ((gui pattern-table-viewer))
+(defmethod initialize ((gui name-table-viewer))
   (setf (texture gui) (allocate-texture)
         (quad gui) (allocate-quad)
         (shader gui) (allocate-shader 'textured)))
 
-(defmethod teardown ((gui pattern-table-viewer))
+(defmethod teardown ((gui name-table-viewer))
   (deallocate-texture (texture gui))
   (deallocate-quad (quad gui))
   (deallocate-shader (shader gui)))
 
-(defmethod dirtyp ((gui pattern-table-viewer))
-  (let ((ts (fern::timestamp-pattern-tables (fern::ppu (nes gui)))))
+(defmethod dirtyp ((gui name-table-viewer))
+  (let ((ts (fern::timestamp-name-tables (fern::ppu (nes gui)))))
     (if (> ts (timestamp gui))
       (progn (setf (timestamp gui) ts) t)
       nil)))
 
-(defmethod render ((gui pattern-table-viewer))
+(defmethod render ((gui name-table-viewer))
   (refresh-pixels gui)
   (viewport (width gui) (height gui))
   (clear 0.2 0.2 0.2)
@@ -88,10 +88,10 @@
 
 ;;;; API ----------------------------------------------------------------------
 (defun open (&optional (nes fern::*nes*))
-  (setf *pattern-table-viewer*
-        (make-instance 'pattern-table-viewer
-          :title "Pattern Tables"
+  (setf *name-table-viewer*
+        (make-instance 'name-table-viewer
+          :title "Name Tables"
           :nes nes
           :width 400
           :height 300))
-  (fern/gui::open-gui *pattern-table-viewer*))
+  (fern/gui::open-gui *name-table-viewer*))

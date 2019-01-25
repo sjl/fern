@@ -39,5 +39,6 @@
                                            (:file "000")))
                              (:module "gui" :serial t
                               :components ((:file "base")
-                                           (:file "pattern-table-viewer")))
+                                           (:file "pattern-table-viewer")
+                                           (:file "name-table-viewer")))
                              (:file "run")))))
