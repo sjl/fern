@@ -71,12 +71,12 @@
   (deallocate-shader (shader gui)))
 
 (defmethod dirtyp ((gui pattern-table-viewer))
-  (let ((ts (fern::timestamp-pattern-tables (fern::ppu (nes gui)))))
-    (if (> ts (timestamp gui))
-      (progn (setf (timestamp gui) ts) t)
-      nil)))
+  (/= (fern::timestamp-pattern-tables (fern::ppu (nes gui)))
+      (timestamp gui)))
 
 (defmethod render ((gui pattern-table-viewer))
+  (setf (timestamp gui)
+        (fern::timestamp-pattern-tables (fern::ppu (nes gui))))
   (refresh-pixels gui)
   (viewport (width gui) (height gui))
   (clear 0.2 0.2 0.2)
@@ -94,4 +94,4 @@
           :nes nes
           :width 400
           :height 300))
-  (fern/gui::open-gui *pattern-table-viewer*))
+  (fern/gui:open-gui *pattern-table-viewer*))

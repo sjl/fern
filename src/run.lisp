@@ -74,22 +74,40 @@
 ;;       *print-length* 25)
 
 ;; (setf
-;;   (pref (ppu *nes*) #x0000)  #b01000001
-;;   (pref (ppu *nes*) #x0001)  #b11000010
-;;   (pref (ppu *nes*) #x0002)  #b01000100
-;;   (pref (ppu *nes*) #x0003)  #b01001000
-;;   (pref (ppu *nes*) #x0004)  #b00010000
-;;   (pref (ppu *nes*) #x0005)  #b00100000
-;;   (pref (ppu *nes*) #x0006)  #b01000000
-;;   (pref (ppu *nes*) #x0007)  #b10000000
-;;   (pref (ppu *nes*) #x0008)  #b00000001
-;;   (pref (ppu *nes*) #x0009)  #b00000010
-;;   (pref (ppu *nes*) #x000A)  #b00000100
-;;   (pref (ppu *nes*) #x000B)  #b00001000
-;;   (pref (ppu *nes*) #x000C)  #b00010110
-;;   (pref (ppu *nes*) #x000D)  #b00100001
-;;   (pref (ppu *nes*) #x000E)  #b01000010
-;;   (pref (ppu *nes*) #x000F)  #b10000111)
+;;   (pref (ppu *nes*) #x0000)  #b00000000
+;;   (pref (ppu *nes*) #x0001)  #b00000000
+;;   (pref (ppu *nes*) #x0002)  #b00000000
+;;   (pref (ppu *nes*) #x0003)  #b00000000
+;;   (pref (ppu *nes*) #x0004)  #b00000000
+;;   (pref (ppu *nes*) #x0005)  #b00000000
+;;   (pref (ppu *nes*) #x0006)  #b00000000
+;;   (pref (ppu *nes*) #x0007)  #b00000000
+;;   (pref (ppu *nes*) #x0008)  #b00000000
+;;   (pref (ppu *nes*) #x0009)  #b00000000
+;;   (pref (ppu *nes*) #x000A)  #b00000000
+;;   (pref (ppu *nes*) #x000B)  #b00000000
+;;   (pref (ppu *nes*) #x000C)  #b00000000
+;;   (pref (ppu *nes*) #x000D)  #b00000000
+;;   (pref (ppu *nes*) #x000E)  #b00000000
+;;   (pref (ppu *nes*) #x000F)  #b00000000)
+
+;; (setf
+;;   (pref (ppu *nes*) #x0000)  #b11111111
+;;   (pref (ppu *nes*) #x0001)  #b11111111
+;;   (pref (ppu *nes*) #x0002)  #b11111111
+;;   (pref (ppu *nes*) #x0003)  #b11111111
+;;   (pref (ppu *nes*) #x0004)  #b11111111
+;;   (pref (ppu *nes*) #x0005)  #b11111111
+;;   (pref (ppu *nes*) #x0006)  #b11111111
+;;   (pref (ppu *nes*) #x0007)  #b11111111
+;;   (pref (ppu *nes*) #x0008)  #b11111111
+;;   (pref (ppu *nes*) #x0009)  #b11111111
+;;   (pref (ppu *nes*) #x000A)  #b11111111
+;;   (pref (ppu *nes*) #x000B)  #b11111111
+;;   (pref (ppu *nes*) #x000C)  #b11111111
+;;   (pref (ppu *nes*) #x000D)  #b11111111
+;;   (pref (ppu *nes*) #x000E)  #b11111111
+;;   (pref (ppu *nes*) #x000F)  #b11111111)
 
 ;; (setf
 ;;   (pref (ppu *nes*) #x1000)  #b01110000

@@ -173,15 +173,8 @@
 (defun window-gui (window)
   (gethash window *window-guis*))
 
-(defmacro with-gui-window-mapping ((gui window) &body body)
-  (alexandria:once-only (gui window)
-    `(unwind-protect (progn
-                       (setf (gethash ,window *window-guis*) ,gui)
-                       ,@body)
-       (remhash ,window *window-guis*))))
 
-
-;;;; GLFW Boilerplate ---------------------------------------------------------
+;;;; GLFW Callback Boilerplate ------------------------------------------------
 ;;; Resize
 (defgeneric handle-resize (gui width height))
 
@@ -298,12 +291,51 @@
 
 
 ;;;; Main Loop ----------------------------------------------------------------
-(defvar *new-guis* nil) ; TODO thread safety on this thing
-(defvar *guis* nil)
-(defvar *gui-thread* nil)
-(defparameter *running* nil)
+(defparameter *running* nil
+  "Global variable that controls when the main GUI loop should be running.")
 
-(defun add-new-gui (gui)
+(defvar *running-guis* nil
+  "List of currently-running GUI objects.
+
+  This list is controlled entirely by the main GUI thread — it must not be
+  accessed from any other thread.")
+
+(defvar *main-gui-thread* nil
+  "A handle to the main GUI thread, if running in the background.")
+
+(defvar *new-guis*
+  (make-instance 'jpl-queues:synchronized-queue
+    :queue (make-instance 'jpl-queues:unbounded-fifo-queue))
+  "A queue of new GUI objects for the main thread to render.
+
+  This allows user threads to pass new GUI object to the main thread for opening
+  via `open`.")
+
+
+(defun destroy-gui (gui)
+  "Destroy `gui`.
+
+  Must be called from the main GUI thread.
+
+  This will run `teardown`, remove it from the window/GUI hash table, and
+  destroy its underlying GLFW window.
+
+  Errors will be logged and ignored.
+
+  "
+  (handler-case
+      (unwind-protect
+          (progn (remhash (window gui) *window-guis*)
+                 (teardown gui))
+        (glfw:destroy-window (window gui)))
+    (error (c) (warn "Error tearing down GUI ~A: ~A" gui c))))
+
+(defun create-glfw-window-for-gui (gui)
+  "Create a GLFW window for `gui`.
+
+  Must be run from the main GUI thread.
+
+  "
   (glfw:create-window :title (title gui)
                       :width (width gui)
                       :height (height gui)
@@ -312,54 +344,116 @@
                       :opengl-profile :opengl-core-profile)
   (setf (window gui) glfw:*window*
         (gethash glfw:*window* *window-guis*) gui)
-  (initialize gui)
   (glfw:set-key-callback 'handle-key-callback)
   (glfw:set-window-size-callback 'handle-resize-callback)
-  (glfw:set-window-refresh-callback 'handle-refresh-callback)
-  (push gui *guis*))
-
-(defun add-new-guis ()
-  (map nil #'add-new-gui *new-guis*)
-  (setf *new-guis* nil))
+  (glfw:set-window-refresh-callback 'handle-refresh-callback))
 
 (defun render-gui (gui)
-  (glfw:make-context-current (window gui))
-  (if (glfw:window-should-close-p)
-    (progn (teardown gui)
-           (glfw:destroy-window)
-           (alexandria:removef *guis* gui))
-    (when (or (dirty gui) (dirtyp gui))
+  "Render `gui` if necessary, returning whether a render happened.
+
+  Must be run from the main GUI thread.
+
+  `t` will be returned if a render happened (i.e. if this GUI needs its window's
+  buffer swapped this frame), `nil` otherwise.
+
+  "
+  (if (or (dirty gui) (dirtyp gui))
+    (progn
       (setf (dirty gui) nil)
+      (glfw:make-context-current (window gui))
       (render gui)
-      (glfw:swap-buffers))))
+      t)
+    nil))
 
 (defun render-guis ()
-  (map nil #'render-gui *guis*))
+  "Render currently running GUIs and return a list of GUIs needing buffer swaps.
 
-(defun gui-loop% ()
-  (setf *running* t)
-  (clrhash *window-guis*)
+  Must be run from the main GUI thread.
+
+  Any GUIs that are ready to close will be removed from the list of currently
+  running GUIs and disposed of.
+
+  "
+  (iterate
+    (for gui :in *running-guis*)
+    (for window = (window gui))
+    (if (glfw:window-should-close-p window)
+      (progn
+        (alexandria:removef *running-guis* gui)
+        (destroy-gui gui))
+      (when (render-gui gui)
+        (collect gui)))))
+
+(defun swap-buffers (guis)
+  "Swap buffers for each gui in `guis`, waiting for vsync.
+
+  Must be run from the main GUI thread.
+
+  If `guis` is null, `sleep` will be called to avoid spin looping.
+
+  "
+  (if (null guis)
+    (sleep 1/100)
+    (progn
+      (glfw:make-context-current (window (first guis)))
+      (glfw:swap-interval 1)
+      (glfw:swap-buffers)
+      (glfw:swap-interval 0)
+      (dolist (gui (rest guis))
+        (glfw:make-context-current (window gui))
+        (glfw:swap-buffers)))))
+
+(defun add-new-guis ()
+  "Initialize and add any newly queued guis.
+
+  Must be run from the main GUI thread.
+
+  "
+  (iterate
+    (until (jpl-queues:empty? *new-guis*))
+    (for gui = (jpl-queues:dequeue *new-guis*))
+    (create-glfw-window-for-gui gui)
+    (initialize gui)
+    (push gui *running-guis*)))
+
+(defun main-loop% ()
+  (setf *running* t
+        *running-guis* nil)
   (glfw:with-init
     (unwind-protect
         (iterate
-          (timing real-time :per-iteration-into loop-time)
-          (pr 'time (* loop-time internal-time-units-per-second))
           (while *running*)
           (add-new-guis)
-          (render-guis)
-          (glfw:poll-events))
-      (map nil #'teardown *guis*)
-      (setf *guis* nil
-            *new-guis* nil))))
+          (swap-buffers (render-guis))
+          (glfw:poll-events)
+          (sleep 1/100))
+      (map nil #'destroy-gui *running-guis*))))
 
-(defun gui-loop (&key background)
+(defun main-loop (&key background)
+  "Start the main GUI loop.
+
+  If `background` is true, the loop will be run in a new thread will be spun up
+  in the background to avoid blocking the REPL.  Set `*running*` to `nil` to
+  stop it.
+
+  If a main GUI loop is already running, it will be (gracefully) stopped first.
+
+  TODO: Force main loop on MacOS.
+
+  "
   (setf *running* nil)
-  (sleep 1/20) ; close enough
+  (sleep 1) ; close enough
   (if background
-    (setf *gui-thread* (bt:make-thread #'gui-loop% :name "Fern GUI thread"))
-    (gui-loop%)))
+    (setf *main-gui-thread*
+          (bt:make-thread #'main-loop% :name "Fern GUI Main Loop"))
+    (main-loop%)))
 
-(defun open-gui (gui)
-  (push gui *new-guis*))
+(defun open (gui)
+  "Open `gui`.
+
+  This function can be called from any thread.
+
+  "
+  (jpl-queues:enqueue gui *new-guis*))
 
 

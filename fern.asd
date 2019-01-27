@@ -15,6 +15,7 @@
                :cl-glfw3
                :cl-opengl
                :iterate
+               :jpl-queues
                :losh
 
                )

@@ -4,6 +4,7 @@
 
 (defpackage :fern/gui
   (:use :cl :iterate :losh :fern)
+  (:shadow :open)
   (:export
     :gui
     :title
@@ -12,8 +13,9 @@
     :dirty
     :nes
     :window
-    :open-gui
-    :gui-loop
+
+    :open
+    :main-loop
 
     :textured
     :use-shader/textured
@@ -21,6 +23,7 @@
     :initialize
     :render
     :teardown
+    :dirtyp
 
     :handle-resize
     :handle-key
