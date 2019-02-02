@@ -94,4 +94,4 @@
           :nes nes
           :width 400
           :height 300))
-  (fern/gui:open-gui *pattern-table-viewer*))
+  (fern/gui:open *pattern-table-viewer*))
