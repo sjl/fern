@@ -5,4 +5,3 @@ lisp.prof
 digraph.png
 *.log
 *.log.bak
-test/*.nes
